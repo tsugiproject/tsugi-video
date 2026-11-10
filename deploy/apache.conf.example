@@ -6,6 +6,11 @@
 # sudo apachectl graceful
 <VirtualHost *:80>
     ServerName video.tsugi.org
+    # Same site on the management name. In Cloudflare, proxy video.tsugi.org and
+    # leave video-manage.tsugi.org DNS-only so that name shows the server address
+    # and the dashboard is not cached. When manage_url is a different host, PHP
+    # refuses /api/, writes, and Basic authentication on video.tsugi.org.
+    ServerAlias video-manage.tsugi.org
     DocumentRoot /var/www/video-server/public
     <Directory /var/www/video-server/public>
         Require all granted

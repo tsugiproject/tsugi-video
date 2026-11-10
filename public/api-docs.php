@@ -3,7 +3,8 @@
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
-$base = rtrim(cfg()['base_url'], '/');
+$base = api_base_url();
+$play = public_base_url();
 ?>
 <!doctype html>
 <html lang="en">
@@ -30,7 +31,7 @@ $base = rtrim(cfg()['base_url'], '/');
     </header>
 
     <section>
-        <p>Every <code>/api/</code> call needs the admin user and password, or a Bearer token from <code>config.php</code>. These examples use the token. curl and Python do not send an Origin header, which is what the write check expects. A browser on another site cannot call the write endpoints with the admin password.</p>
+        <p>Every <code>/api/</code> call needs the admin user and password, or a Bearer token from <code>config.php</code>. These examples use the token. curl and Python do not send an Origin header, which is what the write check expects. A browser on another site cannot call the write endpoints with the admin password. When <code>manage_url</code> is a different host, the API is only on that host. The public host refuses <code>/api/</code>, writes, and Basic authentication. Watch and embed URLs always use the public host. Examples below use the API host.</p>
         <p>The API queues work. An upload, a retry, and <code>POST /api/worker/poke</code> each start one worker. Cron remains the backstop. The same file uploaded again is the same job. A new file uploaded with an existing collection and logical key becomes the video at that key.</p>
         <nav>
             <a href="#setup">Setup</a>
@@ -336,8 +337,8 @@ $base = rtrim(cfg()['base_url'], '/');
             <<<SH
             curl -sS -H "Authorization: Bearer \$TOKEN" "\$BASE/api/jobs/\$ID"
             # watch_url is the file. placements[].watch_url is the collection key.
-            # $base/watch/PY4E/01_02_Intro
-            # $base/embed/PY4E/01_02_Intro
+            # $play/watch/PY4E/01_02_Intro
+            # $play/embed/PY4E/01_02_Intro
             SH,
             <<<'PY'
             job = call("GET", "/api/jobs/" + job_id)

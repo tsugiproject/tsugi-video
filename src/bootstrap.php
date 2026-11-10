@@ -21,10 +21,117 @@ function pathof(string $key): string
     return (string) (cfg()['paths'][$key] ?? '');
 }
 
+// Public playback host, then the optional management host. Both serve this app.
+function configured_base_urls(): array
+{
+    $urls = [];
+    foreach (['base_url', 'manage_url'] as $key) {
+        $value = cfg()[$key] ?? '';
+        if (!is_string($value) || trim($value) === '') {
+            continue;
+        }
+        $urls[] = rtrim($value, '/');
+    }
+    return array_values(array_unique($urls));
+}
+
+function public_base_url(): string
+{
+    return rtrim((string) cfg()['base_url'], '/');
+}
+
+// Host, with a non-default port, for comparing a request to a configured base URL.
+function url_host(string $url): string
+{
+    $parts = parse_url($url);
+    if (!is_array($parts) || !isset($parts['host'])) {
+        return '';
+    }
+    $host = strtolower((string) $parts['host']);
+    $port = $parts['port'] ?? null;
+    $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+    $default = $scheme === 'https' ? 443 : ($scheme === 'http' ? 80 : null);
+    if ($port !== null && $port !== $default) {
+        $host .= ':' . $port;
+    }
+    return $host;
+}
+
+function request_host(): string
+{
+    $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+    $scheme = strtolower((string) ($_SERVER['REQUEST_SCHEME'] ?? ''));
+    if ($scheme === '' && (($_SERVER['HTTPS'] ?? '') === 'on' || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443')) {
+        $scheme = 'https';
+    }
+    $default = $scheme === 'https' ? ':443' : ($scheme === 'http' ? ':80' : '');
+    if ($default !== '' && str_ends_with($host, $default)) {
+        $host = substr($host, 0, -strlen($default));
+    }
+    return $host;
+}
+
+// The configured base that matches this request, or the public one from CLI.
+function request_base_url(): string
+{
+    $host = request_host();
+    if ($host !== '') {
+        foreach (configured_base_urls() as $url) {
+            if ($host === url_host($url)) {
+                return $url;
+            }
+        }
+    }
+    return public_base_url();
+}
+
+// The management host when it is configured and not the same as the public host.
+function separate_manage_url(): ?string
+{
+    $manage = cfg()['manage_url'] ?? '';
+    if (!is_string($manage) || trim($manage) === '') {
+        return null;
+    }
+    $manageUrl = rtrim($manage, '/');
+    $publicUrl = public_base_url();
+    if (strcasecmp($manageUrl, $publicUrl) === 0 || url_host($manageUrl) === url_host($publicUrl)) {
+        return null;
+    }
+    return $manageUrl;
+}
+
+function api_base_url(): string
+{
+    return separate_manage_url() ?? public_base_url();
+}
+
+// True when this request is the cached public host and manage_url is a different host.
+function public_host_is_limited(): bool
+{
+    if (separate_manage_url() === null) {
+        return false;
+    }
+    $host = request_host();
+    return $host !== '' && $host === url_host(public_base_url());
+}
+
+function request_is_api(): bool
+{
+    $path = request_path();
+    if ($path === '/api' || $path === '/api.php' || str_starts_with($path, '/api/')) {
+        return true;
+    }
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    return $script === 'api.php' || str_ends_with($script, '/api.php');
+}
+
 // URL path of this install, e.g. "/tsugi-video" under MAMP or "" at the vhost root.
 function base_path(): string
 {
-    $path = parse_url((string) cfg()['base_url'], PHP_URL_PATH);
+    $path = parse_url(request_base_url(), PHP_URL_PATH);
     return rtrim(is_string($path) ? $path : '', '/');
 }
 
@@ -230,6 +337,37 @@ function fail(string $error, int $code = 400): never
     json_out(['error' => $error], $code);
 }
 
+function fail_page(string $error, int $code): never
+{
+    $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+    if (str_contains($accept, 'text/html')) {
+        http_response_code($code);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo '<!doctype html><html lang="en"><meta charset="utf-8"><title>Video Server</title><p>' . e($error) . '</p></html>';
+        exit;
+    }
+    fail($error, $code);
+}
+
+// The cached host serves playback only. The API, writes, and Basic authentication stay on manage_url.
+function enforce_public_host_limits(): void
+{
+    $manage = separate_manage_url();
+    if ($manage === null || !public_host_is_limited()) {
+        return;
+    }
+    if (request_is_api()) {
+        fail_page('The API is at ' . $manage . '. This host only serves playback.', 404);
+    }
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+        return;
+    }
+    header('Allow: GET, HEAD, OPTIONS');
+    fail_page('Send ' . $method . ' to ' . $manage . '. This host only serves playback.', 405);
+}
+
 // MAMP's mod_fastcgi does not fill PHP_AUTH_*. The header survives as
 // HTTP_AUTHORIZATION or REDIRECT_HTTP_AUTHORIZATION after an internal rewrite.
 function authorization_header(): string
@@ -255,20 +393,29 @@ function admin_auth(): void
         $bearer = $matches[1];
     }
 
-    $user = $_SERVER['PHP_AUTH_USER'] ?? null;
-    $password = $_SERVER['PHP_AUTH_PW'] ?? null;
-    if (($user === null || $password === null) && preg_match('/^Basic\s+(\S+)$/i', $header, $matches)) {
-        $decoded = base64_decode($matches[1], true);
-        if ($decoded !== false && str_contains($decoded, ':')) {
-            [$user, $password] = explode(':', $decoded, 2);
+    $limited = public_host_is_limited();
+    $user = null;
+    $password = null;
+    if (!$limited) {
+        $user = $_SERVER['PHP_AUTH_USER'] ?? null;
+        $password = $_SERVER['PHP_AUTH_PW'] ?? null;
+        if (($user === null || $password === null) && preg_match('/^Basic\s+(\S+)$/i', $header, $matches)) {
+            $decoded = base64_decode($matches[1], true);
+            if ($decoded !== false && str_contains($decoded, ':')) {
+                [$user, $password] = explode(':', $decoded, 2);
+            }
         }
     }
 
     $bearerOk = $bearer !== '' && hash_equals((string) $conf['api_token'], $bearer);
-    $basicOk = $user !== null && $password !== null
+    $basicOk = !$limited && $user !== null && $password !== null
         && hash_equals((string) $conf['admin_user'], (string) $user)
         && hash_equals((string) $conf['admin_password'], (string) $password);
     if (!$bearerOk && !$basicOk) {
+        if ($limited) {
+            $manage = rtrim((string) $conf['manage_url'], '/');
+            fail_page('Sign in at ' . $manage . '. This host does not accept Basic authentication.', 401);
+        }
         header('WWW-Authenticate: Basic realm="Video Server Admin"');
         fail('Authentication required', 401);
     }
@@ -280,19 +427,32 @@ function admin_auth(): void
     }
 }
 
-// Browser Basic credentials are sent automatically, so writes must come from this host.
+function same_origin(string $origin, string $expected): bool
+{
+    $originParts = parse_url($origin);
+    $expectedParts = parse_url($expected);
+    if (!is_array($originParts) || !is_array($expectedParts)) {
+        return false;
+    }
+    return strcasecmp((string) ($originParts['host'] ?? ''), (string) ($expectedParts['host'] ?? '')) === 0
+        && strcasecmp((string) ($originParts['scheme'] ?? ''), (string) ($expectedParts['scheme'] ?? '')) === 0
+        && ($originParts['port'] ?? null) === ($expectedParts['port'] ?? null);
+}
+
+// Browser Basic credentials are sent automatically, so writes must come from a configured host.
 // A missing Origin is allowed so curl and other API clients still work.
 function check_csrf(): void
 {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     if ($origin !== '') {
-        $expected = cfg()['base_url'];
-        $originParts = parse_url($origin);
-        $expectedParts = parse_url($expected);
-        $sameOrigin = ($originParts['host'] ?? '') === ($expectedParts['host'] ?? '')
-            && ($originParts['scheme'] ?? '') === ($expectedParts['scheme'] ?? '')
-            && ($originParts['port'] ?? null) === ($expectedParts['port'] ?? null);
-        if (!$sameOrigin) {
+        $allowed = false;
+        foreach (configured_base_urls() as $expected) {
+            if (same_origin($origin, $expected)) {
+                $allowed = true;
+                break;
+            }
+        }
+        if (!$allowed) {
             fail('Cross-origin write blocked', 403);
         }
     }
@@ -318,7 +478,7 @@ function job_by_id(string $id): ?array
 // Fields safe to return from the API. source_path stays private.
 function public_job(array $job): array
 {
-    $url = rtrim(cfg()['base_url'], '/');
+    $url = public_base_url();
     return [
         'id' => $job['id'],
         'title' => $job['title'],
@@ -444,7 +604,7 @@ function job_placements(string $id): array
 {
     $statement = db()->prepare('SELECT collection, logical_key FROM placements WHERE job_id = ? ORDER BY collection, logical_key');
     $statement->execute([$id]);
-    $url = rtrim(cfg()['base_url'], '/');
+    $url = public_base_url();
     $rows = [];
     foreach ($statement->fetchAll() as $row) {
         $path = '/watch/' . rawurlencode($row['collection']) . '/' . rawurlencode($row['logical_key']);
@@ -576,7 +736,7 @@ function list_collection(string $name): ?array
     }
     $statement = db()->prepare('SELECT p.logical_key, p.job_id, j.title, j.status FROM placements p JOIN jobs j ON j.id = p.job_id WHERE p.collection = ? ORDER BY p.logical_key');
     $statement->execute([$collection]);
-    $url = rtrim(cfg()['base_url'], '/');
+    $url = public_base_url();
     $items = [];
     foreach ($statement->fetchAll() as $row) {
         $path = rawurlencode($collection) . '/' . rawurlencode($row['logical_key']);
@@ -1585,3 +1745,5 @@ function apply_caption_replacements(string $path, string $rulesText): int
     }
     return $count;
 }
+
+enforce_public_host_limits();

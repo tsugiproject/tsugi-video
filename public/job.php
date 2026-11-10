@@ -54,7 +54,7 @@ if ($seconds !== null && $seconds > 0) {
         ? sprintf('%d:%02d:%02d', $hours, $minutes, $total % 60)
         : sprintf('%d:%02d', $minutes, $total % 60);
 }
-$base = rtrim(cfg()['base_url'], '/');
+$base = public_base_url();
 ?>
 <!doctype html>
 <html lang="en">

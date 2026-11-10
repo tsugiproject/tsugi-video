@@ -1,7 +1,8 @@
 <?php
 // Copy to config.php; adjust paths. Never commit config.php or put it under public/.
 return [
-    'base_url' => 'https://video.tsugi.org',
+    'base_url' => 'https://video.tsugi.org', // public playback; this host is the cached one
+    'manage_url' => 'https://video-manage.tsugi.org', // same app; leave DNS-only so this host is not cached
     'app_name' => 'Video Server',
     'admin_user' => 'admin',
     'admin_password' => 'CHANGE_ME_TO_A_LONG_PASSWORD',

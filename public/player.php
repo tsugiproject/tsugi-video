@@ -73,7 +73,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
         <div class="player-info">
             <h1><?= e($job['title']) ?></h1>
             <p>Embed this video:</p>
-            <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . $sharePath) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
+            <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(public_base_url() . $sharePath) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
             <p class="muted">HLS playback requires Safari or bundled hls.js for other browsers.</p>
             <?php if ($tracks !== []): ?>
                 <p>Captions:

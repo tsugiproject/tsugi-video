@@ -16,7 +16,7 @@ Standalone PHP + SQLite video processing, captioning, HLS publishing and iframe 
 ## Quick start
 
 1. Install PHP 8.1+ with `pdo_sqlite`, FFmpeg, FFprobe, whisper.cpp and a Whisper model. See install notes below.
-2. `cp config.example.php config.php` and **edit** `base_url`, credentials, storage, import directories, and binary paths. Use a unique random password and API token. Don't keep `CHANGE_ME` placeholders.
+2. `cp config.example.php config.php` and **edit** `base_url`, `manage_url`, credentials, storage, import directories, and binary paths. Use a unique random password and API token. Don't keep `CHANGE_ME` placeholders. `base_url` is the public cached host (`https://video.tsugi.org`). `manage_url` is the same app on `https://video-manage.tsugi.org`; leave that DNS record unproxied so Cloudflare does not cache it and the name shows the server address. Copied watch and embed links always use `base_url`. Omit `manage_url`, or set it to the same value, when there is only one host. When `manage_url` is a different host, that host is where the API, Basic authentication, and POST, PUT, PATCH, and DELETE are accepted. The public host then serves GET playback only and does not prompt for a password.
 3. Set `paths.required_mount` to `/Volumes/VideoDrive` on macOS or `/efs` on Ubuntu; this is checked on install, enqueue, worker startup, and publication. For local filesystem testing use `null`.
 4. `php bin/install.php`; `php bin/doctor.php`.
 5. `bash bin/install-hlsjs.sh` to install a local copy of hls.js (the player will not contact an external CDN).
@@ -47,18 +47,18 @@ Adjust `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_
 
 ## API
 
-All `/api/*` requests require either HTTP Basic admin credentials or a Bearer API token. Browser writes also require an allowed Origin (when supplied). Never expose admin credentials in embedded player pages.
+All `/api/*` requests require either HTTP Basic admin credentials or a Bearer API token. Browser writes also require an allowed Origin (when supplied). Never expose admin credentials in embedded player pages. When `manage_url` is a different host, call the API on that host. `https://video.tsugi.org/api/` is not served.
 
 ```sh
 curl -H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' \
   -d '{"source":"/efs/video-imports/lecture.mp4","title":"Lecture 1","captions":true}' \
-  https://video.tsugi.org/api/jobs
-curl -H 'Authorization: Bearer YOUR_TOKEN' https://video.tsugi.org/api/jobs
-curl -H 'Authorization: Bearer YOUR_TOKEN' https://video.tsugi.org/api/jobs/VIDEO_ID
+  https://video-manage.tsugi.org/api/jobs
+curl -H 'Authorization: Bearer YOUR_TOKEN' https://video-manage.tsugi.org/api/jobs
+curl -H 'Authorization: Bearer YOUR_TOKEN' https://video-manage.tsugi.org/api/jobs/VIDEO_ID
 curl -H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' -d '{}' \
-  https://video.tsugi.org/api/jobs/VIDEO_ID/retry
+  https://video-manage.tsugi.org/api/jobs/VIDEO_ID/retry
 curl -H 'Authorization: Bearer YOUR_TOKEN' -F 'file=@lecture.mp4' -F 'title=Lecture 1' -F 'captions=1' \
-  https://video.tsugi.org/api/uploads
+  https://video-manage.tsugi.org/api/uploads
 ```
 
 `POST /api/jobs` accepts only real file paths beneath configured `paths.imports` roots (canonical realpaths). The file is copied into managed storage before enqueuing. Restrict API tokens carefully, as enqueueing consumes disk and CPU.

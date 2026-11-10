@@ -23,7 +23,7 @@ $incoming = list_import_files();
 <main>
     <header>
         <h1>Video Server</h1>
-        <span class="muted"><?= e(rtrim(cfg()['base_url'], '/')) ?> · <a href="<?= e(url_path('/library.php')) ?>">Library</a> · <a href="<?= e(url_path('/api-docs.php')) ?>">API</a></span>
+        <span class="muted"><?php foreach (configured_base_urls() as $baseUrl): ?><span><?= e($baseUrl) ?></span> · <?php endforeach; ?><a href="<?= e(url_path('/library.php')) ?>">Library</a> · <a href="<?= e(url_path('/api-docs.php')) ?>">API</a></span>
         <p class="muted sysinfo"><?= e(server_summary()) ?></p>
     </header>
 
@@ -95,7 +95,7 @@ $incoming = list_import_files();
                             <?php if ($job['status'] === 'completed'): ?>
                                 <a href="<?= e(url_path('/watch/' . $job['id'])) ?>" target="_blank" rel="noopener">Watch</a>
                                 ·
-                                <span class="nowrap"><a href="<?= e(url_path('/embed/' . $job['id'])) ?>" target="_blank" rel="noopener">Embed</a><button type="button" class="copy" data-copy="<?= e(rtrim(cfg()['base_url'], '/') . '/embed/' . $job['id']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></span>
+                                <span class="nowrap"><a href="<?= e(url_path('/embed/' . $job['id'])) ?>" target="_blank" rel="noopener">Embed</a><button type="button" class="copy" data-copy="<?= e(public_base_url() . '/embed/' . $job['id']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></span>
                                 ·
                                 <a href="<?= e(url_path('/captions.php') . '?id=' . $job['id']) ?>">Captions</a>
                                 ·
