@@ -14,6 +14,26 @@ try {
         json_out(['jobs' => array_map('public_job', $rows)]);
     }
 
+    if ($method === 'GET' && $path === '/collections' && !array_key_exists('q', $_GET)) {
+        json_out(['collections' => list_collections()]);
+    }
+
+    if ($method === 'GET' && $path === '/collections') {
+        json_out(['collections' => search_collections((string) $_GET['q'])]);
+    }
+
+    if ($method === 'GET' && preg_match('~^/collections/([A-Za-z0-9][A-Za-z0-9._-]*)$~', $path, $matches)) {
+        $collection = list_collection($matches[1]);
+        if (!$collection) {
+            fail('Not found', 404);
+        }
+        json_out($collection);
+    }
+
+    if ($method === 'GET' && $path === '/keys') {
+        json_out(['keys' => search_keys((string) ($_GET['collection'] ?? ''), (string) ($_GET['q'] ?? ''))]);
+    }
+
     if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{64})$~', $path, $matches)) {
         $job = job_by_id($matches[1]);
         if (!$job) {
@@ -45,8 +65,11 @@ try {
         }
         $file = safe_import((string) ($data['source'] ?? ''));
         $title = trim((string) ($data['title'] ?? basename($file))) ?: basename($file);
+        $collection = trim((string) ($data['collection'] ?? ''));
+        $key = trim((string) ($data['logical_key'] ?? ''));
+        require_placement_pair($collection, $key);
         $job = create_job($file, basename($file), $title, (bool) ($data['captions'] ?? true));
-        json_out(public_job($job), 201);
+        json_out(placed_job($job, $collection, $key), 201);
     }
 
     if ($method === 'POST' && $path === '/uploads') {
@@ -63,8 +86,11 @@ try {
         }
         $name = basename((string) $file['name']);
         $title = trim((string) ($_POST['title'] ?? '')) ?: $name;
+        $collection = trim((string) ($_POST['collection'] ?? ''));
+        $key = trim((string) ($_POST['logical_key'] ?? ''));
+        require_placement_pair($collection, $key);
         $job = create_job($file['tmp_name'], $name, $title, isset($_POST['captions']));
-        json_out(public_job($job), 201);
+        json_out(placed_job($job, $collection, $key), 201);
     }
 
     // Drop the files and the queue row. A running worker still owns a processing job.
@@ -93,6 +119,7 @@ try {
         }
         $statement = db()->prepare("UPDATE jobs SET status='queued', stage='queued', progress=0, error=NULL, started_at=NULL, finished_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?");
         $statement->execute([$matches[1]]);
+        start_worker();
         json_out(public_job(job_by_id($matches[1])));
     }
 

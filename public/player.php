@@ -3,17 +3,35 @@
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
-$id = $_GET['id'] ?? '';
+$id = (string) ($_GET['id'] ?? '');
+$keyedCollection = '';
+$keyedKey = '';
+if ($id === '' && isset($_GET['collection'], $_GET['key'])) {
+    $job = placement_job((string) $_GET['collection'], (string) $_GET['key']);
+    if (!$job) {
+        http_response_code(404);
+        exit('Not found');
+    }
+    $id = $job['id'];
+    $keyedCollection = $job['collection'];
+    $keyedKey = $job['logical_key'];
+} else {
+    $job = null;
+}
 if (!is_content_id($id)) {
     http_response_code(404);
     exit('Not found');
 }
 
-$job = job_by_id($id);
+$job = $job ?? job_by_id($id);
 if (!$job || $job['status'] !== 'completed') {
     http_response_code(404);
     exit('Video not ready');
 }
+
+$sharePath = $keyedCollection !== ''
+    ? '/embed/' . rawurlencode($keyedCollection) . '/' . rawurlencode($keyedKey)
+    : '/embed/' . $id;
 
 $embed = ($_GET['embed'] ?? '') === '1';
 $hls = url_path(media_public_path($id) . '/index.m3u8');
@@ -45,7 +63,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
         <div class="player-info">
             <h1><?= e($job['title']) ?></h1>
             <p>Embed this video:</p>
-            <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . '/embed/' . $id) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
+            <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . $sharePath) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
             <p class="muted">HLS playback requires Safari or bundled hls.js for other browsers.</p>
         </div>
     <?php endif; ?>

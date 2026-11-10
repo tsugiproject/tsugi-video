@@ -87,6 +87,11 @@ function db(): PDO
         $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $pdo->exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;');
     }
+    static $schema = false;
+    if (!$schema) {
+        $pdo->exec(file_get_contents(dirname(__DIR__) . '/sql/schema.sql'));
+        $schema = true;
+    }
     return $pdo;
 }
 
@@ -98,6 +103,101 @@ function init_db(): void
 function e(string $s): string
 {
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+// One line for the dashboard: CPU, operating system, and RAM. macOS and Linux.
+function server_summary(): string
+{
+    if (PHP_OS_FAMILY === 'Darwin') {
+        $parts = array_filter([
+            format_cpu(sysctl_value('machdep.cpu.brand_string') ?: sysctl_value('hw.model'), (int) (sysctl_value('hw.cpufrequency_max') ?: sysctl_value('hw.cpufrequency'))),
+            trim(shell_value('/usr/bin/sw_vers -productName') . ' ' . shell_value('/usr/bin/sw_vers -productVersion')),
+            format_ram((int) sysctl_value('hw.memsize')),
+        ]);
+    } elseif (PHP_OS_FAMILY === 'Linux') {
+        $cpuinfo = readable_text('/proc/cpuinfo');
+        $maxKhz = (int) readable_text('/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq');
+        $parts = array_filter([
+            format_cpu(linux_cpu_model($cpuinfo), $maxKhz * 1000),
+            linux_os_name(readable_text('/etc/os-release')),
+            format_ram(linux_ram_bytes(readable_text('/proc/meminfo'))),
+        ]);
+    } else {
+        $parts = [trim(php_uname('s') . ' ' . php_uname('r')), php_uname('m')];
+    }
+    return $parts === [] ? php_uname('s') : implode(' · ', $parts);
+}
+
+function format_cpu(string $brand, int $hertz = 0): string
+{
+    $brand = preg_replace('/\((?:R|TM)\)/i', '', $brand) ?? $brand;
+    $brand = preg_replace('/\s+CPU\b/i', '', $brand) ?? $brand;
+    $brand = trim(preg_replace('/\s+/', ' ', $brand) ?? '');
+    if ($brand !== '' && !preg_match('/ghz/i', $brand) && $hertz >= 100_000_000) {
+        $ghz = rtrim(rtrim(number_format($hertz / 1_000_000_000, 2, '.', ''), '0'), '.');
+        $brand .= ' @ ' . $ghz . ' GHz';
+    }
+    return $brand;
+}
+
+function format_ram(int $bytes): string
+{
+    if ($bytes < 1) {
+        return '';
+    }
+    $gb = $bytes / 1073741824;
+    $text = $gb >= 10 ? (string) (int) round($gb) : rtrim(rtrim(number_format($gb, 1, '.', ''), '0'), '.');
+    return $text . ' GB';
+}
+
+function linux_cpu_model(string $cpuinfo): string
+{
+    if (preg_match('/^model name\s*:\s*(.+)$/mi', $cpuinfo, $matches)) {
+        return trim($matches[1]);
+    }
+    if (preg_match('/^Hardware\s*:\s*(.+)$/mi', $cpuinfo, $matches)) {
+        return trim($matches[1]);
+    }
+    return '';
+}
+
+function linux_os_name(string $release): string
+{
+    if (preg_match('/^PRETTY_NAME="(.*)"/m', $release, $matches)) {
+        return $matches[1];
+    }
+    return 'Linux';
+}
+
+function linux_ram_bytes(string $meminfo): int
+{
+    if (!preg_match('/^MemTotal:\s+(\d+)\s+kB/mi', $meminfo, $matches)) {
+        return 0;
+    }
+    return (int) $matches[1] * 1024;
+}
+
+function sysctl_value(string $key): string
+{
+    return shell_value('/usr/sbin/sysctl -n ' . escapeshellarg($key));
+}
+
+function shell_value(string $command): string
+{
+    if (!function_exists('shell_exec')) {
+        return '';
+    }
+    $output = shell_exec($command . ' 2>/dev/null');
+    return trim((string) $output);
+}
+
+function readable_text(string $path): string
+{
+    if (!is_readable($path)) {
+        return '';
+    }
+    $text = file_get_contents($path);
+    return is_string($text) ? $text : '';
 }
 
 function json_out($data, int $status = 200): never
@@ -219,7 +319,231 @@ function public_job(array $job): array
         'embed_url' => $url . '/embed/' . $job['id'],
         'watch_url' => $url . '/watch/' . $job['id'],
         'hls_url' => $job['status'] === 'completed' ? $url . media_public_path($job['id']) . '/index.m3u8' : null,
+        'placements' => job_placements($job['id']),
     ];
+}
+
+// Collection and key are URL segments: PY4E and 01_02_Intro.
+function placement_token(string $value): string
+{
+    $value = trim($value);
+    if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $value)) {
+        throw new InvalidArgumentException('Use letters, numbers, dots, underscores, or hyphens');
+    }
+    return $value;
+}
+
+function canonical_collection(string $name): string
+{
+    $name = placement_token($name);
+    $statement = db()->prepare('SELECT collection FROM placements WHERE collection = ? COLLATE NOCASE LIMIT 1');
+    $statement->execute([$name]);
+    $found = $statement->fetchColumn();
+    return is_string($found) ? $found : $name;
+}
+
+function canonical_key(string $collection, string $key): string
+{
+    $key = placement_token($key);
+    $statement = db()->prepare('SELECT logical_key FROM placements WHERE collection = ? AND logical_key = ? COLLATE NOCASE LIMIT 1');
+    $statement->execute([$collection, $key]);
+    $found = $statement->fetchColumn();
+    return is_string($found) ? $found : $key;
+}
+
+function require_placement_pair(string $collection, string $key): void
+{
+    if ($collection === '' && $key === '') {
+        return;
+    }
+    if ($collection === '' || $key === '') {
+        throw new InvalidArgumentException('Provide both a collection and a logical key');
+    }
+    placement_token($collection);
+    placement_token($key);
+}
+
+function placed_job(array $job, string $collection, string $key): array
+{
+    if ($collection !== '' && $key !== '') {
+        assign_placement($job['id'], $collection, $key);
+    }
+    $public = public_job(job_by_id($job['id']));
+    // Cron remains the backstop. This only helps when nothing is already rendering.
+    if ($public['status'] === 'queued') {
+        start_worker();
+    }
+    return $public;
+}
+
+// Start one worker and return. If a worker holds the lock, the new process exits immediately.
+function start_worker(): void
+{
+    $php = php_cli_binary();
+    $worker = dirname(__DIR__) . '/bin/worker.php';
+    $path = getenv('PATH') ?: '/usr/bin:/bin';
+    foreach (['/opt/homebrew/bin', '/usr/local/bin'] as $dir) {
+        if (is_dir($dir) && !str_contains($path, $dir . ':') && !str_ends_with($path, $dir)) {
+            $path = $dir . ':' . $path;
+        }
+    }
+    $command = 'PATH=' . escapeshellarg($path)
+        . ' nohup ' . escapeshellarg($php) . ' ' . escapeshellarg($worker)
+        . ' > /dev/null 2>&1 &';
+    exec($command);
+}
+
+function php_cli_binary(): string
+{
+    if (PHP_SAPI === 'cli' && is_executable(PHP_BINARY)) {
+        return PHP_BINARY;
+    }
+    foreach ([dirname(PHP_BINARY) . '/php', PHP_BINDIR . '/php'] as $candidate) {
+        if (is_executable($candidate)) {
+            return $candidate;
+        }
+    }
+    return 'php';
+}
+
+// Point collection/key at this job. An existing key moves to the new video.
+function assign_placement(string $jobId, string $collection, string $key): array
+{
+    $collection = canonical_collection($collection);
+    $key = canonical_key($collection, $key);
+    $existing = db()->prepare('SELECT job_id FROM placements WHERE collection = ? AND logical_key = ?');
+    $existing->execute([$collection, $key]);
+    $previous = $existing->fetchColumn();
+    $statement = db()->prepare('INSERT INTO placements (collection, logical_key, job_id) VALUES (?,?,?) ON CONFLICT(collection, logical_key) DO UPDATE SET job_id = excluded.job_id, updated_at = CURRENT_TIMESTAMP');
+    $statement->execute([$collection, $key, $jobId]);
+    return [
+        'collection' => $collection,
+        'logical_key' => $key,
+        'replaced' => is_string($previous) && $previous !== $jobId,
+    ];
+}
+
+function job_placements(string $id): array
+{
+    $statement = db()->prepare('SELECT collection, logical_key FROM placements WHERE job_id = ? ORDER BY collection, logical_key');
+    $statement->execute([$id]);
+    $url = rtrim(cfg()['base_url'], '/');
+    $rows = [];
+    foreach ($statement->fetchAll() as $row) {
+        $path = '/watch/' . rawurlencode($row['collection']) . '/' . rawurlencode($row['logical_key']);
+        $embed = '/embed/' . rawurlencode($row['collection']) . '/' . rawurlencode($row['logical_key']);
+        $rows[] = [
+            'collection' => $row['collection'],
+            'logical_key' => $row['logical_key'],
+            'watch_url' => $url . $path,
+            'embed_url' => $url . $embed,
+        ];
+    }
+    return $rows;
+}
+
+function list_collections(): array
+{
+    $statement = db()->query('SELECT collection FROM placements GROUP BY collection COLLATE NOCASE ORDER BY collection');
+    return array_column($statement->fetchAll(), 'collection');
+}
+
+// Every key in one collection, and the video that key points at now.
+function list_collection(string $name): ?array
+{
+    try {
+        $name = placement_token($name);
+    } catch (InvalidArgumentException) {
+        return null;
+    }
+    $statement = db()->prepare('SELECT collection FROM placements WHERE collection = ? COLLATE NOCASE LIMIT 1');
+    $statement->execute([$name]);
+    $collection = $statement->fetchColumn();
+    if (!is_string($collection)) {
+        return null;
+    }
+    $statement = db()->prepare('SELECT p.logical_key, p.job_id, j.title, j.status FROM placements p JOIN jobs j ON j.id = p.job_id WHERE p.collection = ? ORDER BY p.logical_key');
+    $statement->execute([$collection]);
+    $url = rtrim(cfg()['base_url'], '/');
+    $items = [];
+    foreach ($statement->fetchAll() as $row) {
+        $path = rawurlencode($collection) . '/' . rawurlencode($row['logical_key']);
+        $items[] = [
+            'logical_key' => $row['logical_key'],
+            'job_id' => $row['job_id'],
+            'title' => $row['title'],
+            'status' => $row['status'],
+            'watch_url' => $url . '/watch/' . $path,
+            'embed_url' => $url . '/embed/' . $path,
+        ];
+    }
+    return ['collection' => $collection, 'items' => $items];
+}
+
+function search_collections(string $query): array
+{
+    $prefix = placement_prefix($query);
+    if ($prefix === null) {
+        return [];
+    }
+    $statement = db()->prepare('SELECT collection FROM placements WHERE collection LIKE ? COLLATE NOCASE GROUP BY collection COLLATE NOCASE ORDER BY collection LIMIT 8');
+    $statement->execute([$prefix . '%']);
+    return array_column($statement->fetchAll(), 'collection');
+}
+
+function search_keys(string $collection, string $query): array
+{
+    if (placement_prefix($collection) === null || trim($collection) === '') {
+        return [];
+    }
+    $prefix = placement_prefix($query);
+    if ($prefix === null) {
+        return [];
+    }
+    try {
+        $collection = canonical_collection($collection);
+    } catch (InvalidArgumentException) {
+        return [];
+    }
+    $statement = db()->prepare('SELECT logical_key FROM placements WHERE collection = ? AND logical_key LIKE ? COLLATE NOCASE ORDER BY logical_key LIMIT 8');
+    $statement->execute([$collection, $prefix . '%']);
+    return array_column($statement->fetchAll(), 'logical_key');
+}
+
+function placement_prefix(string $query): ?string
+{
+    $query = trim($query);
+    if ($query === '') {
+        return '';
+    }
+    if (!preg_match('/^[A-Za-z0-9._-]{1,64}$/', $query)) {
+        return null;
+    }
+    return $query;
+}
+
+// Resolve a public /watch/{collection}/{key} URL to the video it currently names.
+function placement_job(string $collection, string $key): ?array
+{
+    try {
+        $collection = canonical_collection($collection);
+        $key = canonical_key($collection, $key);
+    } catch (InvalidArgumentException) {
+        return null;
+    }
+    $statement = db()->prepare('SELECT job_id FROM placements WHERE collection = ? AND logical_key = ?');
+    $statement->execute([$collection, $key]);
+    $jobId = $statement->fetchColumn();
+    if (!is_string($jobId)) {
+        return null;
+    }
+    $job = job_by_id($jobId);
+    if (!$job) {
+        return null;
+    }
+    $job['collection'] = $collection;
+    $job['logical_key'] = $key;
+    return $job;
 }
 
 class ConflictException extends RuntimeException
@@ -428,6 +752,8 @@ function delete_job(array $job): void
             remove_tree($real);
         }
     }
+    $statement = db()->prepare('DELETE FROM placements WHERE job_id=?');
+    $statement->execute([$id]);
     $statement = db()->prepare('DELETE FROM jobs WHERE id=?');
     $statement->execute([$id]);
     $log = job_log_path($id);

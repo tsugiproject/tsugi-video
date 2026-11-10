@@ -15,3 +15,14 @@ CREATE TABLE IF NOT EXISTS jobs (
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS jobs_status_created ON jobs(status,created_at);
+
+-- A collection plus a logical key points at one video. Uploading that pair again
+-- moves the pointer to the new file. The previous file stays addressable by its hash.
+CREATE TABLE IF NOT EXISTS placements (
+ collection TEXT NOT NULL,
+ logical_key TEXT NOT NULL,
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY (collection, logical_key)
+);
+CREATE INDEX IF NOT EXISTS placements_job ON placements(job_id);

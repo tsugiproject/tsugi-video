@@ -30,6 +30,14 @@ if (preg_match('~^/(watch|embed)/([a-f0-9]{64})$~', $uri, $matches)) {
     return true;
 }
 
+if (preg_match('~^/(watch|embed)/([A-Za-z0-9][A-Za-z0-9._-]*)/([A-Za-z0-9][A-Za-z0-9._-]*)$~', $uri, $matches)) {
+    $_GET['collection'] = $matches[2];
+    $_GET['key'] = $matches[3];
+    $_GET['embed'] = $matches[1] === 'embed' ? '1' : '0';
+    require __DIR__ . '/player.php';
+    return true;
+}
+
 // Let the built-in server send real files under public/, such as assets.
 $file = realpath(__DIR__ . $uri);
 if ($file && str_starts_with($file, __DIR__ . '/') && is_file($file)) {

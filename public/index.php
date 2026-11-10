@@ -25,7 +25,8 @@ foreach ($counts as $name => $_) {
 <main>
     <header>
         <h1>Video Server</h1>
-        <span class="muted"><?= e(rtrim(cfg()['base_url'], '/')) ?></span>
+        <span class="muted"><?= e(rtrim(cfg()['base_url'], '/')) ?> · <a href="<?= e(url_path('/api-docs.php')) ?>">API</a></span>
+        <p class="muted sysinfo"><?= e(server_summary()) ?></p>
     </header>
 
     <section class="stats">
@@ -40,11 +41,29 @@ foreach ($counts as $name => $_) {
     <section>
         <h2>Upload a video</h2>
         <form id="upload" enctype="multipart/form-data">
-            <label>Video file <input type="file" name="file" accept="video/*" required></label>
-            <label>Title <input name="title" placeholder="Optional title"></label>
-            <label><input type="checkbox" name="captions" value="1" checked> Generate Whisper captions</label>
-            <button type="submit">Upload and enqueue</button>
-            <output id="upload-status"></output>
+            <div class="form-row">
+                <label class="browse">Browse
+                    <input type="file" name="file" accept="video/*" required>
+                </label>
+                <span id="file-name" class="muted">No file chosen</span>
+                <label class="check"><input type="checkbox" name="captions" value="1" checked> Generate Whisper captions</label>
+            </div>
+            <div class="form-row">
+                <label>Optional title <input name="title" placeholder="Optional title"></label>
+                <label class="suggest">Collection
+                    <input name="collection" autocomplete="off" placeholder="PY4E" aria-autocomplete="list">
+                    <ul class="suggestions" hidden></ul>
+                </label>
+                <label class="suggest">Logical key
+                    <input name="logical_key" autocomplete="off" placeholder="01_02_Intro" aria-autocomplete="list">
+                    <ul class="suggestions" hidden></ul>
+                </label>
+            </div>
+            <div class="form-row">
+                <button type="submit">Upload and enqueue</button>
+                <output id="upload-status"></output>
+            </div>
+            <p class="muted note">If you upload a video with the same collection and logical key, a watch or embed address that uses that collection and key plays the new video. The original and the new video both remain playable by their SHA-256 address.</p>
         </form>
     </section>
 
@@ -57,7 +76,7 @@ foreach ($counts as $name => $_) {
             <tbody id="jobs">
                 <?php foreach ($jobs as $job): ?>
                     <tr>
-                        <td><?= e($job['title']) ?><small><?= e($job['original_name']) ?></small></td>
+                        <td><?= e($job['title']) ?><small><?= e($job['original_name']) ?></small><small class="sha"><?= e($job['id']) ?></small><?php foreach (job_placements($job['id']) as $slot): ?><small><a href="<?= e(url_path('/watch/' . rawurlencode($slot['collection']) . '/' . rawurlencode($slot['logical_key']))) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a></small><?php endforeach; ?></td>
                         <td><?= e($job['status'] . ' / ' . $job['stage']) ?><?php $line = job_log_tail($job['id']); if ($line): ?><small class="log-line"><?= e($line) ?></small><?php endif; ?></td>
                         <td><?= round((float) $job['progress']) ?>%</td>
                         <td class="dates">
