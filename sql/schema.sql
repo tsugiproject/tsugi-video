@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS jobs (
  progress REAL NOT NULL DEFAULT 0,
  duration REAL,
  captions INTEGER NOT NULL DEFAULT 1,
+ -- Whisper initial prompt, and the replacement rules applied to captions.vtt.
+ caption_prompt TEXT,
+ caption_replacements TEXT,
  error TEXT,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  started_at TEXT,

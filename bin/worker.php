@@ -1,8 +1,9 @@
 <?php
 declare(strict_types=1);
 
-// Process one queued video, then exit. Cron or launchd starts the next run.
-// A second copy exits immediately instead of taking another job.
+// Process one queued video. After it completes, start a new worker for the next
+// item. That process exits if the lock is held or the queue is empty, and it
+// opens that job's own log. A failed job does not start another worker.
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
@@ -86,6 +87,31 @@ function probe(string $source): array
     return $data;
 }
 
+function whisper_supports_prompt(): bool
+{
+    static $supports = null;
+    if ($supports !== null) {
+        return $supports;
+    }
+    $spec = [
+        0 => ['file', '/dev/null', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open([pathof('whisper'), '--help'], $spec, $pipes, null, null, ['bypass_shell' => true]);
+    if (!is_resource($process)) {
+        $supports = false;
+        return false;
+    }
+    $output = stream_get_contents($pipes[1]);
+    $error = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    $supports = str_contains((string) $output . (string) $error, '--prompt');
+    return $supports;
+}
+
 // Map FFmpeg's out_time_us onto the 5%–75% slice of the job progress bar.
 function progress_ffmpeg(string $line): void
 {
@@ -135,6 +161,7 @@ try {
     if (!is_dir($work) && !mkdir($work, 0770, true)) {
         throw new RuntimeException('Could not create staging directory');
     }
+    // This run's log. The next process sets its own path after it claims a job.
     $log = job_log_path($id);
     logmsg('--- run started: ' . $job['original_name'] . ' ---');
     $probe = probe($job['source_path']);
@@ -223,7 +250,7 @@ try {
         update_job($id, 'processing', 'whisper', 83);
         logmsg('Generating captions');
         $captions = cfg()['captions'];
-        command_run([
+        $args = [
             pathof('whisper'),
             '-m', pathof('whisper_model'),
             '-f', $wav,
@@ -231,10 +258,27 @@ try {
             '-t', (string) $captions['threads'],
             '-ovtt',
             '-of', $work . '/captions',
-        ]);
+        ];
+        // -p is processors in whisper-cli. The vocabulary flag is the long form --prompt.
+        $prompt = trim((string) ($job['caption_prompt'] ?? ''));
+        if ($prompt !== '') {
+            if (whisper_supports_prompt()) {
+                $args[] = '--prompt';
+                $args[] = $prompt;
+                logmsg('Whisper vocabulary prompt (' . strlen($prompt) . ' bytes)');
+            } else {
+                logmsg('NOTE: whisper-cli has no --prompt; vocabulary will not be used');
+            }
+        }
+        command_run($args);
         @unlink($wav);
         if (!is_file($work . '/captions.vtt')) {
             throw new RuntimeException('Whisper did not produce captions.vtt');
+        }
+        $rules = (string) ($job['caption_replacements'] ?? '');
+        if (trim($rules) !== '') {
+            $applied = apply_caption_replacements($work . '/captions.vtt', $rules);
+            logmsg('Caption replacements applied: ' . $applied);
         }
     }
 
@@ -255,3 +299,10 @@ try {
     db()->prepare('UPDATE jobs SET finished_at=CURRENT_TIMESTAMP WHERE id=?')->execute([$id]);
     exit(1);
 }
+
+// Drop the lock before the next process starts. If this process still held it,
+// the new worker would see the lock and exit without taking the next job.
+flock($lock, LOCK_UN);
+fclose($lock);
+start_worker();
+exit(0);

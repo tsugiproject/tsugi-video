@@ -11,6 +11,7 @@ return [
         'required_mount' => '/efs', // use '/Volumes/VideoDrive' on Mac, or null for local-only testing
         'database' => __DIR__ . '/var/video.sqlite', // local disk, NOT EFS
         'imports' => ['/efs/video-imports'], // only these roots accepted by path API
+        'inbox' => null, // default drop folder for bin/start-inbox.php; pass a path to use another folder
         'ffmpeg' => 'ffmpeg',
         'ffprobe' => 'ffprobe',
         'whisper' => 'whisper-cli',

@@ -43,4 +43,11 @@ $storage = pathof('storage');
 $writable = is_dir($storage) && is_writable($storage);
 echo ($writable ? 'OK' : 'WARN') . " storage writable\n";
 
+$inbox = pathof('inbox');
+if ($inbox === '') {
+    echo "inbox: not configured\n";
+} else {
+    echo (is_dir($inbox) ? 'OK' : 'WARN') . " inbox: $inbox\n";
+}
+
 exit($errors ? 1 : 0);

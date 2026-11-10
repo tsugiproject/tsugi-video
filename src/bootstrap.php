@@ -90,6 +90,7 @@ function db(): PDO
     static $schema = false;
     if (!$schema) {
         $pdo->exec(file_get_contents(dirname(__DIR__) . '/sql/schema.sql'));
+        ensure_job_columns($pdo);
         $schema = true;
     }
     return $pdo;
@@ -98,6 +99,21 @@ function db(): PDO
 function init_db(): void
 {
     db()->exec(file_get_contents(dirname(__DIR__) . '/sql/schema.sql'));
+}
+
+// CREATE TABLE IF NOT EXISTS does not add columns to a database that already exists.
+function ensure_job_columns(PDO $pdo): void
+{
+    $names = [];
+    foreach ($pdo->query('PRAGMA table_info(jobs)') as $row) {
+        $names[$row['name']] = true;
+    }
+    if (!isset($names['caption_prompt'])) {
+        $pdo->exec('ALTER TABLE jobs ADD COLUMN caption_prompt TEXT');
+    }
+    if (!isset($names['caption_replacements'])) {
+        $pdo->exec('ALTER TABLE jobs ADD COLUMN caption_replacements TEXT');
+    }
 }
 
 function e(string $s): string
@@ -971,4 +987,347 @@ function remove_tree(string $path): void
     if (!rmdir($path)) {
         throw new RuntimeException('Could not remove ' . $path);
     }
+}
+
+// Save the inbox vocabulary prompt and replacement rules on a job.
+// The worker reads these after the Dropbox folder may already have been cleared.
+function store_caption_context(string $id, ?string $prompt, ?string $replacements): void
+{
+    if (!is_content_id($id)) {
+        throw new InvalidArgumentException('Invalid content id');
+    }
+    $prompt = $prompt === null ? '' : trim($prompt);
+    $hasRules = $replacements !== null && trim($replacements) !== '';
+    $statement = db()->prepare('UPDATE jobs SET caption_prompt=?, caption_replacements=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+    $statement->execute([
+        $prompt === '' ? null : $prompt,
+        $hasRules ? $replacements : null,
+        $id,
+    ]);
+}
+
+// media.yaml as written by bootstrap-media-yaml.py: nested maps, scalars, and | blocks.
+function parse_media_yaml(string $text): array
+{
+    $text = preg_replace('/^\xEF\xBB\xBF/', '', $text) ?? $text;
+    $lines = preg_split("/\r\n|\n|\r/", $text);
+    if ($lines === false) {
+        throw new InvalidArgumentException('Could not read media.yaml');
+    }
+    $root = [];
+    $stack = [['indent' => -1, 'path' => []]];
+    $count = count($lines);
+    $index = 0;
+    while ($index < $count) {
+        $line = $lines[$index];
+        $lineNo = $index + 1;
+        if (trim($line) === '' || preg_match('/^\s*#/', $line) || trim($line) === '---' || trim($line) === '...') {
+            $index++;
+            continue;
+        }
+        if (preg_match('/^\t/', $line) || preg_match('/^ *\t/', $line)) {
+            throw new InvalidArgumentException('line ' . $lineNo . ': tabs are not allowed in indentation');
+        }
+        if (!preg_match('/^( *)(.+?):(.*)$/', $line, $matches)) {
+            throw new InvalidArgumentException('line ' . $lineNo . ': expected key: value');
+        }
+        $indent = strlen($matches[1]);
+        $key = rtrim($matches[2]);
+        if ($key === '') {
+            throw new InvalidArgumentException('line ' . $lineNo . ': empty key');
+        }
+        while (count($stack) > 1 && $stack[array_key_last($stack)]['indent'] >= $indent) {
+            array_pop($stack);
+        }
+        $parent = $stack[array_key_last($stack)]['path'];
+        $rest = trim($matches[3]);
+        if (preg_match('/^\|([-+]?)[0-9]?$/', $rest, $block)) {
+            $index++;
+            $blockLines = [];
+            $blockIndent = null;
+            while ($index < $count) {
+                $candidate = $lines[$index];
+                if (trim($candidate) === '') {
+                    $blockLines[] = '';
+                    $index++;
+                    continue;
+                }
+                if (preg_match('/^\t/', $candidate)) {
+                    throw new InvalidArgumentException('line ' . ($index + 1) . ': tabs are not allowed in indentation');
+                }
+                if (!preg_match('/^( *)(.*)$/', $candidate, $parts)) {
+                    break;
+                }
+                $contentIndent = strlen($parts[1]);
+                if ($blockIndent === null) {
+                    if ($contentIndent <= $indent) {
+                        break;
+                    }
+                    $blockIndent = $contentIndent;
+                }
+                if ($contentIndent < $blockIndent) {
+                    break;
+                }
+                $blockLines[] = substr($candidate, $blockIndent);
+                $index++;
+            }
+            $value = implode("\n", $blockLines);
+            $chomp = $block[1];
+            if ($chomp === '-') {
+                $value = rtrim($value, "\n");
+            } elseif ($chomp !== '+') {
+                $value = rtrim($value, "\n");
+                if ($blockLines !== []) {
+                    $value .= "\n";
+                }
+            }
+            yaml_assign($root, $parent, $key, $value);
+            continue;
+        }
+        if ($rest === '') {
+            $nextIndent = yaml_next_indent($lines, $index + 1);
+            if ($nextIndent !== null && $nextIndent > $indent) {
+                yaml_assign($root, $parent, $key, []);
+                $stack[] = ['indent' => $indent, 'path' => array_merge($parent, [$key])];
+            } else {
+                yaml_assign($root, $parent, $key, null);
+            }
+            $index++;
+            continue;
+        }
+        yaml_assign($root, $parent, $key, yaml_scalar($rest, $lineNo));
+        $index++;
+    }
+    return $root;
+}
+
+function yaml_next_indent(array $lines, int $start): ?int
+{
+    $count = count($lines);
+    for ($index = $start; $index < $count; $index++) {
+        $line = $lines[$index];
+        if (trim($line) === '' || preg_match('/^\s*#/', $line)) {
+            continue;
+        }
+        if (!preg_match('/^( *)\S/', $line, $matches)) {
+            return 0;
+        }
+        return strlen($matches[1]);
+    }
+    return null;
+}
+
+function yaml_assign(array &$root, array $parentPath, string $key, mixed $value): void
+{
+    $node = &$root;
+    foreach ($parentPath as $segment) {
+        if (!array_key_exists($segment, $node) || !is_array($node[$segment])) {
+            $node[$segment] = [];
+        }
+        $node = &$node[$segment];
+    }
+    $node[$key] = $value;
+}
+
+function yaml_scalar(string $value, int $lineNo): mixed
+{
+    if (preg_match('/^(?:null|Null|NULL|~)$/', $value)) {
+        return null;
+    }
+    if (preg_match('/^(?:true|True|TRUE)$/', $value)) {
+        return true;
+    }
+    if (preg_match('/^(?:false|False|FALSE)$/', $value)) {
+        return false;
+    }
+    if (strlen($value) >= 2 && $value[0] === "'" && str_ends_with($value, "'")) {
+        return str_replace("''", "'", substr($value, 1, -1));
+    }
+    if (strlen($value) >= 2 && $value[0] === '"' && str_ends_with($value, '"')) {
+        return yaml_unescape_double(substr($value, 1, -1));
+    }
+    if ((str_starts_with($value, "'") && !str_ends_with($value, "'")) || (str_starts_with($value, '"') && !str_ends_with($value, '"'))) {
+        throw new InvalidArgumentException('line ' . $lineNo . ': unterminated quoted value');
+    }
+    return $value;
+}
+
+function yaml_unescape_double(string $value): string
+{
+    $replaced = preg_replace_callback('/\\\\(.)/', static function (array $matches): string {
+        return match ($matches[1]) {
+            'n' => "\n",
+            't' => "\t",
+            'r' => "\r",
+            '"' => '"',
+            '\\' => '\\',
+            default => $matches[1],
+        };
+    }, $value);
+    return $replaced ?? $value;
+}
+
+// One term per line. Blank lines and # comments are ignored.
+function caption_vocabulary_terms(string $text): array
+{
+    $terms = [];
+    foreach (preg_split("/\r\n|\n|\r/", $text) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#')) {
+            continue;
+        }
+        $terms[] = $line;
+    }
+    return $terms;
+}
+
+// whisper-cli --prompt is capped at n_text_ctx/2, typically 224 tokens.
+// Byte length / 2 over-counts English so the course hint and early terms fit.
+function build_caption_prompt(string $courseHint, array $terms): array
+{
+    $courseHint = trim($courseHint);
+    $clean = [];
+    foreach ($terms as $term) {
+        $term = trim((string) $term);
+        if ($term !== '') {
+            $clean[] = $term;
+        }
+    }
+    $limit = 224;
+    if ($clean !== [] && caption_prompt_units(caption_prompt_text($courseHint, $clean)) > $limit) {
+        $kept = [];
+        foreach ($clean as $term) {
+            $candidate = $kept;
+            $candidate[] = $term;
+            if (caption_prompt_units(caption_prompt_text($courseHint, $candidate)) > $limit) {
+                break;
+            }
+            $kept[] = $term;
+        }
+    } else {
+        $kept = $clean;
+    }
+    $prompt = caption_prompt_text($courseHint, $kept);
+    return [
+        'prompt' => $prompt === '' ? null : $prompt,
+        'kept' => count($kept),
+        'total' => count($clean),
+        'skipped' => count($clean) - count($kept),
+    ];
+}
+
+function caption_prompt_text(string $courseHint, array $terms): string
+{
+    if ($terms === []) {
+        return $courseHint;
+    }
+    return $courseHint . '. Technical vocabulary: ' . implode(', ', $terms);
+}
+
+function caption_prompt_units(string $text): int
+{
+    return intdiv(strlen($text) + 1, 2);
+}
+
+// Rules are "incorrect => correct". Longest left-hand side first.
+function caption_replacement_rules(string $text): array
+{
+    $rules = [];
+    $lineNo = 0;
+    foreach (preg_split("/\r\n|\n|\r/", $text) ?: [] as $line) {
+        $lineNo++;
+        if (str_contains($line, "\t")) {
+            throw new InvalidArgumentException('Replacement line ' . $lineNo . ': tabs are not allowed; use incorrect => correct');
+        }
+        $stripped = trim($line);
+        if ($stripped === '' || str_starts_with($stripped, '#')) {
+            continue;
+        }
+        if (!str_contains($stripped, '=>')) {
+            throw new InvalidArgumentException('Replacement line ' . $lineNo . ": expected 'incorrect => correct'");
+        }
+        [$left, $right] = explode('=>', $stripped, 2);
+        $left = trim($left);
+        $right = trim($right);
+        if ($left === '') {
+            throw new InvalidArgumentException('Replacement line ' . $lineNo . ': empty left-hand side');
+        }
+        if ($left === $right) {
+            continue;
+        }
+        $rules[] = [$left, $right, $lineNo];
+    }
+    usort($rules, static function (array $a, array $b): int {
+        $length = strlen($b[0]) <=> strlen($a[0]);
+        return $length !== 0 ? $length : $a[2] <=> $b[2];
+    });
+    $ordered = [];
+    foreach ($rules as $rule) {
+        $ordered[] = [$rule[0], $rule[1]];
+    }
+    return $ordered;
+}
+
+function caption_line_is_metadata(string $line): bool
+{
+    $stripped = trim($line);
+    if ($stripped === '' || $stripped === 'WEBVTT') {
+        return true;
+    }
+    if (preg_match('/^(NOTE|STYLE|REGION)(\s|$)/', $stripped)) {
+        return true;
+    }
+    if (preg_match('/^\d+$/', $stripped)) {
+        return true;
+    }
+    return str_contains($stripped, '-->');
+}
+
+// Rewrite caption text in a WebVTT file. Timestamps and cue ids are left alone.
+function apply_caption_replacements(string $path, string $rulesText): int
+{
+    $rules = caption_replacement_rules($rulesText);
+    if ($rules === []) {
+        return 0;
+    }
+    $text = file_get_contents($path);
+    if (!is_string($text)) {
+        throw new RuntimeException('Could not read captions');
+    }
+    if (str_starts_with($text, "\xEF\xBB\xBF")) {
+        $text = substr($text, 3);
+    }
+    $newline = str_contains($text, "\r\n") ? "\r\n" : "\n";
+    $ends = str_ends_with($text, $newline);
+    $lines = explode($newline, $text);
+    if ($ends) {
+        array_pop($lines);
+    }
+    $count = 0;
+    foreach ($lines as $index => $line) {
+        if (caption_line_is_metadata($line)) {
+            continue;
+        }
+        $updated = $line;
+        foreach ($rules as $rule) {
+            $found = substr_count($updated, $rule[0]);
+            if ($found === 0) {
+                continue;
+            }
+            $count += $found;
+            $updated = str_replace($rule[0], $rule[1], $updated);
+        }
+        $lines[$index] = $updated;
+    }
+    if ($count === 0) {
+        return 0;
+    }
+    $rendered = implode($newline, $lines);
+    if ($ends) {
+        $rendered .= $newline;
+    }
+    if (file_put_contents($path, $rendered) === false) {
+        throw new RuntimeException('Could not write captions');
+    }
+    return $count;
 }

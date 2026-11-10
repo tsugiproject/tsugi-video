@@ -67,6 +67,19 @@ curl -H 'Authorization: Bearer YOUR_TOKEN' -F 'file=@lecture.mp4' -F 'title=Lect
 
 Job stages are queued, probe, hls, audio, whisper, publish, completed/failed. Progress percent measures FFmpeg media-time during HLS conversion; Whisper presently shows its **stage** rather than numerical percent. A conversion can finish but fail during captions; a retry reruns the job. Per-job logs remain in work directory on failure and published directory on success.
 
+## Inbox
+
+`paths.inbox` is the default drop folder, for example a Dropbox directory. Pass another folder to read that one instead. Put a course there as `media.yaml` plus the videos it names. Entry keys are paths relative to the `media.yaml` folder, such as `lesson-01-welcome/clip.m4v`, including files in subfolders. Also put a whisper vocabulary file (`*whisper-vocabulary*`) and a replacements file (`*whisper-replacements*`, lines of `incorrect => correct`) in that same folder or in a `whisper/` subfolder. A `media.yaml` one folder down is its own course. Absolute `media_root` and `whisper_root` paths from another machine are not followed.
+
+```sh
+php bin/start-inbox.php                         # report paths.inbox; does not queue
+php bin/start-inbox.php /path/to/this/drop      # report this folder only
+php bin/start-inbox.php /path/to/this/drop --apply
+php bin/start-inbox.php --limit 1 --apply
+```
+
+A run only reports unless you pass `--apply`. It hashes each video and leaves queued, processing, completed, and failed jobs alone. With `--apply`, new files are copied into storage, placed on the collection and logical key from `media.yaml`, and keep that course's vocabulary prompt and replacement rules. Whisper receives the vocabulary as `--prompt`. After transcription, the replacement rules are applied to the caption text and timestamps are left unchanged. One worker is started when anything new is queued. A finished job starts the next worker, which stops if the lock is held or the queue is empty. Cron remains the backstop.
+
 ## Security and operational notes
 
 - Public video URLs have no authentication. Management and API endpoints require credentials.
