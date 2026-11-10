@@ -437,6 +437,15 @@ function ingest_catalog(string $inbox, string $catalog, bool $dry, int $limit, a
         if ($title === '') {
             $title = basename($relative);
         }
+        $description = scalar_text($entry['description'] ?? '');
+        if ($description !== '') {
+            out('      description ' . strlen($description) . ' characters');
+        }
+        $tags = scalar_text($entry['tags'] ?? '');
+        $tagList = tag_list($tags);
+        if ($tagList !== []) {
+            out('      tags ' . implode(', ', $tagList));
+        }
         $collection = scalar_text($entry['collection'] ?? '');
         $key = scalar_text($entry['logical_key'] ?? '');
         $place = false;
@@ -456,6 +465,10 @@ function ingest_catalog(string $inbox, string $catalog, bool $dry, int $limit, a
                 $statement = db()->prepare('UPDATE jobs SET title=?, original_name=? WHERE id=?');
                 $statement->execute([$title, $relative, $hash]);
                 store_caption_context($hash, $prompt, $rulesText);
+            }
+            if (!$dry && in_array($status, ['queued', 'processing', 'completed'], true)) {
+                store_job_description($hash, $description);
+                store_job_tags($hash, $tags);
             }
             if ($status === 'queued' || $status === 'processing' || $status === 'completed') {
                 if ($place && !$dry) {
@@ -484,6 +497,8 @@ function ingest_catalog(string $inbox, string $catalog, bool $dry, int $limit, a
         }
 
         $job = create_job($path, $relative, $title, true);
+        store_job_description($job['id'], $description);
+        store_job_tags($job['id'], $tags);
         if ($place) {
             $moved = assign_placement($job['id'], $collection, $key);
             if ($moved['replaced']) {

@@ -31,7 +31,7 @@ $play = public_base_url();
     </header>
 
     <section>
-        <p>Every <code>/api/</code> call needs the admin user and password, or a Bearer token from <code>config.php</code>. These examples use the token. curl and Python do not send an Origin header, which is what the write check expects. A browser on another site cannot call the write endpoints with the admin password. When <code>manage_url</code> is a different host, open these examples on that host. The public host serves watch and embed pages only.</p>
+        <p>Every <code>/api/</code> call needs the admin user and password, or a Bearer token from <code>config.php</code>. These examples use the token. curl and Python do not send an Origin header, which is what the write check expects. A browser on another site cannot call the write endpoints with the admin password. When <code>manage_url</code> is a different host, open these examples on that host. The public host serves watch pages, embed pages, and collection playlists only.</p>
         <p>The API queues work. An upload, a retry, and <code>POST /api/worker/poke</code> each start one worker. Cron remains the backstop. The same file uploaded again is the same job. A new file uploaded with an existing collection and logical key becomes the video at that key.</p>
         <nav>
             <a href="#setup">Setup</a>
@@ -333,6 +333,21 @@ $play = public_base_url();
     <section id="play">
         <h2>Watch and embed</h2>
         <p>Playback URLs are public. <code>watch_url</code> and <code>embed_url</code> on the job always address that exact file. Each entry in <code>placements</code> addresses the collection and key, and follows whatever video you upload to that key next.</p>
+        <p><code><?= e($play) ?>/watch/PY4E</code> is the collection playlist. Finished videos are listed by logical key. Choosing a title plays that video in the page. <code><?= e($play) ?>/watch/PY4E.json</code> is the same list. Each video has its <code>logical_key</code>, <code>embed_url</code>, and the job columns: <code>id</code>, <code>title</code>, <code>description</code>, <code>tags</code>, <code>display_title</code>, <code>original_name</code>, <code>status</code>, <code>stage</code>, <code>progress</code>, <code>duration</code>, <code>captions</code>, <code>error</code>, <code>created_at</code>, <code>started_at</code>, <code>finished_at</code>, and <code>updated_at</code>. <code>tags</code> is the list of comma-separated tags from <code>media.yaml</code>. A browser on another site can read the JSON. An unknown collection is 404.</p>
+        <?php example(
+            <<<SH
+            curl -sS "$play/watch/PY4E.json"
+            SH,
+            <<<PY
+            import json
+            import urllib.request
+
+            with urllib.request.urlopen("$play/watch/PY4E.json") as response:
+                playlist = json.load(response)
+            for video in playlist["videos"]:
+                print(video["logical_key"], video["title"], video["embed_url"])
+            PY
+        ); ?>
         <?php example(
             <<<SH
             curl -sS -H "Authorization: Bearer \$TOKEN" "\$BASE/api/jobs/\$ID"

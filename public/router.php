@@ -30,6 +30,19 @@ if (preg_match('~^/(watch|embed)/([a-f0-9]{64})$~', $uri, $matches)) {
     return true;
 }
 
+if (preg_match('~^/watch/([A-Za-z0-9][A-Za-z0-9._-]*)\.json$~', $uri, $matches)) {
+    $_GET['collection'] = $matches[1];
+    $_GET['format'] = 'json';
+    require __DIR__ . '/playlist.php';
+    return true;
+}
+
+if (preg_match('~^/watch/([A-Za-z0-9][A-Za-z0-9._-]*)$~', $uri, $matches)) {
+    $_GET['collection'] = $matches[1];
+    require __DIR__ . '/playlist.php';
+    return true;
+}
+
 if (preg_match('~^/(watch|embed)/([A-Za-z0-9][A-Za-z0-9._-]*)/([A-Za-z0-9][A-Za-z0-9._-]*)$~', $uri, $matches)) {
     $_GET['collection'] = $matches[2];
     $_GET['key'] = $matches[3];

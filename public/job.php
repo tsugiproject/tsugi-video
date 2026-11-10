@@ -76,6 +76,8 @@ if ($seconds !== null && $seconds > 0) {
         <p class="muted sha"><?= e($id) ?></p>
         <table class="facts">
             <tr><th>File</th><td><?= e((string) $job['original_name']) ?></td></tr>
+            <tr><th>Description</th><td class="description"><?= e(trim((string) ($job['description'] ?? ''))) ?: '—' ?></td></tr>
+            <tr><th>Tags</th><td><?= e(implode(', ', job_tags($job))) ?: '—' ?></td></tr>
             <tr><th>Status</th><td<?= $job['status'] === 'failed' ? ' class="status-failed"' : '' ?>><?= e((string) $job['status']) ?></td></tr>
             <tr><th>Stage</th><td><?= e((string) $job['stage']) ?></td></tr>
             <tr><th>Progress</th><td><?= round((float) $job['progress']) ?>%<div class="progress"><span style="width:<?= e((string) max(0, min(100, (float) $job['progress']))) ?>%"></span></div></td></tr>
@@ -94,7 +96,7 @@ if ($seconds !== null && $seconds > 0) {
                         —
                     <?php else: ?>
                         <?php foreach ($placements as $slot): ?>
-                            <div class="nowrap"><?= e('(' . $slot['collection'] . ', ' . $slot['logical_key'] . ')') ?><?php if ($ready): ?> <a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e($slot['embed_url']) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button><?php endif; ?></div>
+                            <div class="nowrap"><?= e('(' . $slot['collection'] . ', ' . $slot['logical_key'] . ')') ?> <a href="<?= e(public_url('/watch/' . rawurlencode($slot['collection']))) ?>" target="_blank" rel="noopener">Collection</a><?php if ($ready): ?> · <a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e($slot['embed_url']) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button><?php endif; ?></div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </td>

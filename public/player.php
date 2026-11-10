@@ -60,7 +60,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
     <title><?= e($job['title']) ?></title>
     <link rel="stylesheet" href="<?= e(url_path('/assets/style.css')) ?>">
 </head>
-<body class="player-page">
+<body class="player-page<?= $embed ? ' embed-page' : '' ?>">
 <div class="player-wrap">
     <div class="video-stage">
     <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" crossorigin="anonymous">

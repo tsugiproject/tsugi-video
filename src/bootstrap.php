@@ -216,6 +216,12 @@ function ensure_job_columns(PDO $pdo): void
     if (!isset($names['caption_replacements'])) {
         $pdo->exec('ALTER TABLE jobs ADD COLUMN caption_replacements TEXT');
     }
+    if (!isset($names['description'])) {
+        $pdo->exec('ALTER TABLE jobs ADD COLUMN description TEXT');
+    }
+    if (!isset($names['tags'])) {
+        $pdo->exec('ALTER TABLE jobs ADD COLUMN tags TEXT');
+    }
 }
 
 function e(string $s): string
@@ -353,7 +359,8 @@ function public_request_is_playback(): bool
     }
     $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
     return $script === 'player.php' || str_ends_with($script, '/player.php')
-        || $script === 'media.php' || str_ends_with($script, '/media.php');
+        || $script === 'media.php' || str_ends_with($script, '/media.php')
+        || $script === 'playlist.php' || str_ends_with($script, '/playlist.php');
 }
 
 // A disallowed public-host URL redirects when redirect_to is set. Otherwise it says the server is read-only.
@@ -391,23 +398,33 @@ function redirect_playback_to_public_host(): void
     $path = request_path();
     if (preg_match('~^/(?:watch|embed)(?:/|$)~', $path) !== 1) {
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
-        if ($script !== 'player.php' && !str_ends_with($script, '/player.php')) {
+        $isPlayer = $script === 'player.php' || str_ends_with($script, '/player.php');
+        $isPlaylist = $script === 'playlist.php' || str_ends_with($script, '/playlist.php');
+        if (!$isPlayer && !$isPlaylist) {
             return;
         }
-        $prefix = ($_GET['embed'] ?? '') === '1' ? '/embed/' : '/watch/';
         $collection = (string) ($_GET['collection'] ?? '');
-        $key = (string) ($_GET['key'] ?? '');
-        $id = (string) ($_GET['id'] ?? '');
-        if ($collection !== '' && $key !== '') {
-            $path = $prefix . rawurlencode($collection) . '/' . rawurlencode($key);
-        } elseif (is_content_id($id)) {
-            $path = $prefix . $id;
+        if ($isPlaylist) {
+            if ($collection === '') {
+                return;
+            }
+            $suffix = ($_GET['format'] ?? '') === 'json' ? '.json' : '';
+            $path = '/watch/' . rawurlencode($collection) . $suffix;
         } else {
-            return;
+            $prefix = ($_GET['embed'] ?? '') === '1' ? '/embed/' : '/watch/';
+            $key = (string) ($_GET['key'] ?? '');
+            $id = (string) ($_GET['id'] ?? '');
+            if ($collection !== '' && $key !== '') {
+                $path = $prefix . rawurlencode($collection) . '/' . rawurlencode($key);
+            } elseif (is_content_id($id)) {
+                $path = $prefix . $id;
+            } else {
+                return;
+            }
         }
     }
     $params = $_GET;
-    unset($params['id'], $params['embed'], $params['collection'], $params['key']);
+    unset($params['id'], $params['embed'], $params['collection'], $params['key'], $params['format']);
     $query = http_build_query($params);
     header('Cache-Control: no-store');
     header('Location: ' . public_base_url() . $path . ($query !== '' ? '?' . $query : ''), true, 302);
@@ -540,6 +557,8 @@ function public_job(array $job): array
     return [
         'id' => $job['id'],
         'title' => $job['title'],
+        'description' => job_description($job),
+        'tags' => job_tags($job),
         'display_title' => display_title($job),
         'original_name' => $job['original_name'],
         'status' => $job['status'],
@@ -826,6 +845,54 @@ function list_collection(string $name): ?array
         ];
     }
     return ['collection' => $collection, 'items' => $items];
+}
+
+// Finished videos in one collection, in logical-key order. The public playlist
+// and its JSON use this. A name that is not a collection is null.
+function collection_playlist(string $name): ?array
+{
+    try {
+        $name = placement_token($name);
+    } catch (InvalidArgumentException) {
+        return null;
+    }
+    $statement = db()->prepare('SELECT collection FROM placements WHERE collection = ? COLLATE NOCASE LIMIT 1');
+    $statement->execute([$name]);
+    $collection = $statement->fetchColumn();
+    if (!is_string($collection)) {
+        return null;
+    }
+    $statement = db()->prepare('SELECT p.logical_key, j.id, j.title, j.description, j.tags, j.original_name, j.status, j.stage, j.progress, j.duration, j.captions, j.error, j.created_at, j.started_at, j.finished_at, j.updated_at FROM placements p JOIN jobs j ON j.id = p.job_id WHERE p.collection = ? AND j.status = ? ORDER BY p.logical_key COLLATE NOCASE');
+    $statement->execute([$collection, 'completed']);
+    $url = public_base_url();
+    $videos = [];
+    foreach ($statement->fetchAll() as $row) {
+        $path = rawurlencode($collection) . '/' . rawurlencode($row['logical_key']);
+        $seconds = $row['duration'] === null ? null : max(0, (int) round((float) $row['duration']));
+        $videos[] = [
+            'logical_key' => $row['logical_key'],
+            'embed_url' => $url . '/embed/' . $path,
+            'embed_path' => url_path('/embed/' . $path),
+            'duration_label' => $seconds === null ? '' : format_elapsed($seconds),
+            'id' => $row['id'],
+            'title' => $row['title'],
+            'description' => job_description($row),
+            'tags' => job_tags($row),
+            'display_title' => display_title($row),
+            'original_name' => $row['original_name'],
+            'status' => $row['status'],
+            'stage' => $row['stage'],
+            'progress' => (float) $row['progress'],
+            'duration' => $row['duration'] === null ? null : (float) $row['duration'],
+            'captions' => (int) $row['captions'],
+            'error' => $row['error'],
+            'created_at' => $row['created_at'],
+            'started_at' => $row['started_at'],
+            'finished_at' => $row['finished_at'],
+            'updated_at' => $row['updated_at'],
+        ];
+    }
+    return ['collection' => $collection, 'videos' => $videos];
 }
 
 function search_collections(string $query): array
@@ -1481,6 +1548,52 @@ function remove_tree(string $path): void
 
 // Save the inbox vocabulary prompt and replacement rules on a job.
 // The worker reads these after the Dropbox folder may already have been cleared.
+function job_description(array $job): ?string
+{
+    $description = trim((string) ($job['description'] ?? ''));
+    return $description === '' ? null : $description;
+}
+
+// The inbox description. A blank value clears one that was stored earlier.
+function store_job_description(string $id, string $description): void
+{
+    if (!is_content_id($id)) {
+        throw new InvalidArgumentException('Invalid content id');
+    }
+    $description = trim($description);
+    $statement = db()->prepare('UPDATE jobs SET description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+    $statement->execute([$description === '' ? null : $description, $id]);
+}
+
+// Comma-separated tags from media.yaml, in the order they were written.
+function tag_list(string $tags): array
+{
+    $list = [];
+    foreach (explode(',', $tags) as $tag) {
+        $tag = trim($tag);
+        if ($tag !== '' && !in_array($tag, $list, true)) {
+            $list[] = $tag;
+        }
+    }
+    return $list;
+}
+
+function job_tags(array $job): array
+{
+    return tag_list((string) ($job['tags'] ?? ''));
+}
+
+// A blank value clears tags that were stored earlier.
+function store_job_tags(string $id, string $tags): void
+{
+    if (!is_content_id($id)) {
+        throw new InvalidArgumentException('Invalid content id');
+    }
+    $list = tag_list($tags);
+    $statement = db()->prepare('UPDATE jobs SET tags=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+    $statement->execute([$list === [] ? null : implode(', ', $list), $id]);
+}
+
 function store_caption_context(string $id, ?string $prompt, ?string $replacements): void
 {
     if (!is_content_id($id)) {
