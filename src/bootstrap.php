@@ -709,6 +709,226 @@ function media_public_path(string $id): string
     return '/media/' . content_rel($id);
 }
 
+// Heights to encode, tallest first. A source shorter than a rung skips that rung.
+// When every configured height is taller than the source, the source height is the only rung.
+function video_ladder_heights(array $video, int $sourceHeight): array
+{
+    if ($sourceHeight < 2) {
+        throw new InvalidArgumentException('Video is too small');
+    }
+    $configured = [];
+    if (isset($video['heights']) && is_array($video['heights']) && $video['heights'] !== []) {
+        foreach ($video['heights'] as $height) {
+            $configured[] = (int) $height;
+        }
+    } else {
+        $max = (int) ($video['height'] ?? 720);
+        if ($max < 2) {
+            $max = 720;
+        }
+        if ($max % 2 !== 0) {
+            $max--;
+        }
+        $configured = [$max];
+        if (360 < $max) {
+            $configured[] = 360;
+        }
+    }
+    $valid = [];
+    foreach ($configured as $height) {
+        if ($height >= 2 && $height % 2 === 0) {
+            $valid[$height] = $height;
+        }
+    }
+    if ($valid === []) {
+        throw new InvalidArgumentException('video.heights needs even heights');
+    }
+    $ceiling = max($valid);
+    $evenSource = $sourceHeight - ($sourceHeight % 2);
+    $kept = [];
+    foreach ($valid as $height) {
+        if ($height <= $sourceHeight) {
+            $kept[$height] = $height;
+        }
+    }
+    // Keep a source that falls between two rungs, and never above the configured ceiling.
+    if ($evenSource >= 2 && $evenSource < $ceiling && ($kept === [] || max($kept) < $evenSource)) {
+        $kept[$evenSource] = $evenSource;
+    }
+    if ($kept === []) {
+        throw new InvalidArgumentException('No video sizes fit this source');
+    }
+    rsort($kept, SORT_NUMERIC);
+    return array_values($kept);
+}
+
+function published_media_name(string $file): bool
+{
+    return (bool) preg_match(
+        '#^(?:[0-9]{2,4}/)?(?:index\.m3u8|segment[0-9]{5}\.ts)$|^captions\.vtt$|^captions-[a-z]{2,3}\.vtt$#',
+        $file
+    );
+}
+
+// English stays captions.vtt. Another language is captions-es.vtt beside it.
+function caption_language(string $code): string
+{
+    $code = strtolower(trim($code));
+    if (!preg_match('/^[a-z]{2,3}$/', $code)) {
+        throw new InvalidArgumentException('Use a 2 or 3 letter language code, such as en or es');
+    }
+    return $code;
+}
+
+function caption_language_names(): array
+{
+    return [
+        'en' => 'English',
+        'es' => 'Spanish',
+        'pt' => 'Portuguese',
+        'fr' => 'French',
+        'de' => 'German',
+        'it' => 'Italian',
+        'nl' => 'Dutch',
+        'pl' => 'Polish',
+        'ru' => 'Russian',
+        'uk' => 'Ukrainian',
+        'ar' => 'Arabic',
+        'hi' => 'Hindi',
+        'zh' => 'Chinese',
+        'ja' => 'Japanese',
+        'ko' => 'Korean',
+        'vi' => 'Vietnamese',
+        'tr' => 'Turkish',
+        'id' => 'Indonesian',
+        'sv' => 'Swedish',
+    ];
+}
+
+function caption_language_label(string $code): string
+{
+    $names = caption_language_names();
+    return $names[$code] ?? strtoupper($code);
+}
+
+function caption_track_file(string $language): string
+{
+    $language = caption_language($language);
+    return $language === 'en' ? 'captions.vtt' : 'captions-' . $language . '.vtt';
+}
+
+function caption_tracks(string $id): array
+{
+    if (!is_content_id($id)) {
+        return [];
+    }
+    $dir = content_dir('media', $id);
+    if (!is_dir($dir)) {
+        return [];
+    }
+    $tracks = [];
+    if (is_file($dir . '/captions.vtt')) {
+        $tracks[] = caption_track_info('en');
+    }
+    $paths = glob($dir . '/captions-*.vtt') ?: [];
+    sort($paths, SORT_STRING);
+    foreach ($paths as $path) {
+        if (!preg_match('/captions-([a-z]{2,3})\.vtt$/', basename($path), $matches)) {
+            continue;
+        }
+        if ($matches[1] === 'en') {
+            continue;
+        }
+        $tracks[] = caption_track_info($matches[1]);
+    }
+    return $tracks;
+}
+
+function caption_track_info(string $language): array
+{
+    $language = caption_language($language);
+    return [
+        'language' => $language,
+        'label' => caption_language_label($language),
+        'file' => caption_track_file($language),
+    ];
+}
+
+function caption_vtt_text(string $contents): string
+{
+    if (strlen($contents) > 2 * 1024 * 1024) {
+        throw new InvalidArgumentException('Caption file is larger than 2 MB');
+    }
+    if (str_contains($contents, "\0")) {
+        throw new InvalidArgumentException('Caption file must be WebVTT text');
+    }
+    $text = preg_replace('/^\xEF\xBB\xBF/', '', $contents) ?? $contents;
+    if (!preg_match('/^\s*WEBVTT(\s|$)/', $text)) {
+        throw new InvalidArgumentException('Caption file must start with WEBVTT');
+    }
+    return $text;
+}
+
+// Replace one published track. English overwrites captions.vtt from Whisper.
+function save_caption_track(string $id, string $language, string $contents): array
+{
+    if (!is_content_id($id)) {
+        throw new InvalidArgumentException('Invalid content id');
+    }
+    $language = caption_language($language);
+    $job = job_by_id($id);
+    if (!$job || $job['status'] !== 'completed') {
+        throw new InvalidArgumentException('Captions can be added after the video is published');
+    }
+    require_media_mount();
+    $dir = content_dir('media', $id);
+    $realDir = realpath($dir);
+    if ($realDir === false || !is_dir($realDir)) {
+        throw new InvalidArgumentException('Published video is missing');
+    }
+    $text = caption_vtt_text($contents);
+    $file = caption_track_file($language);
+    $target = $realDir . '/' . $file;
+    $partial = $target . '.partial';
+    if (file_put_contents($partial, $text) === false) {
+        throw new RuntimeException('Could not write captions');
+    }
+    if (!rename($partial, $target)) {
+        @unlink($partial);
+        throw new RuntimeException('Could not publish captions');
+    }
+    return caption_track_info($language);
+}
+
+function delete_caption_track(string $id, string $language): void
+{
+    if (!is_content_id($id)) {
+        throw new InvalidArgumentException('Invalid content id');
+    }
+    $language = caption_language($language);
+    $job = job_by_id($id);
+    if (!$job) {
+        throw new InvalidArgumentException('Not found');
+    }
+    require_media_mount();
+    $dir = content_dir('media', $id);
+    $realDir = realpath($dir);
+    if ($realDir === false || !is_dir($realDir)) {
+        throw new InvalidArgumentException('Published video is missing');
+    }
+    $path = $realDir . '/' . caption_track_file($language);
+    if (!is_file($path)) {
+        throw new InvalidArgumentException('That caption track is not on this video');
+    }
+    $real = realpath($path);
+    if ($real === false || !str_starts_with($real, $realDir . '/')) {
+        throw new RuntimeException('Refusing to delete outside the published video');
+    }
+    if (!unlink($real)) {
+        throw new RuntimeException('Could not remove captions');
+    }
+}
+
 // Keep one original per SHA-256. A finished match is returned as-is.
 // A failed or changed match is queued again; the worker replaces its output from staging.
 function create_job(string $source, string $original, string $title, bool $captions): array

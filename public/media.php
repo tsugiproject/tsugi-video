@@ -4,16 +4,16 @@
 
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
-$id = $_GET['id'] ?? '';
-$file = $_GET['file'] ?? '';
-$allowedFile = preg_match('/^(index\\.m3u8|segment[0-9]{5}\\.ts|captions\\.vtt)$/', $file);
-if (!is_content_id($id) || !$allowedFile) {
+$id = (string) ($_GET['id'] ?? '');
+$file = str_replace('\\', '/', (string) ($_GET['file'] ?? ''));
+if (!is_content_id($id) || !published_media_name($file)) {
     http_response_code(404);
     exit('Not found');
 }
 
-$path = content_dir('media', $id) . '/' . $file;
-if (!is_file($path)) {
+$root = realpath(content_dir('media', $id));
+$path = $root === false ? false : realpath($root . '/' . $file);
+if ($root === false || $path === false || !is_file($path) || !str_starts_with($path, $root . '/')) {
     http_response_code(404);
     exit('Not found');
 }

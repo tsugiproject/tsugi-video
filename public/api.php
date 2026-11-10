@@ -59,6 +59,40 @@ try {
         json_out(public_job($job));
     }
 
+    if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{64})/captions$~', $path, $matches)) {
+        if (!job_by_id($matches[1])) {
+            fail('Not found', 404);
+        }
+        json_out(['tracks' => caption_tracks($matches[1])]);
+    }
+
+    if ($method === 'POST' && preg_match('~^/jobs/([a-f0-9]{64})/captions$~', $path, $matches)) {
+        check_csrf();
+        if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            fail('Upload failed. Check PHP upload_max_filesize and post_max_size.');
+        }
+        $file = $_FILES['file'];
+        if (!is_uploaded_file($file['tmp_name'])) {
+            fail('Upload not valid');
+        }
+        if ($file['size'] > 2 * 1024 * 1024) {
+            fail('Caption file is larger than 2 MB', 413);
+        }
+        $contents = file_get_contents($file['tmp_name']);
+        if (!is_string($contents)) {
+            fail('Could not read upload');
+        }
+        $language = (string) ($_POST['language'] ?? 'en');
+        $track = save_caption_track($matches[1], $language, $contents);
+        json_out(['track' => $track, 'tracks' => caption_tracks($matches[1])]);
+    }
+
+    if ($method === 'DELETE' && preg_match('~^/jobs/([a-f0-9]{64})/captions/([a-z]{2,3})$~', $path, $matches)) {
+        check_csrf();
+        delete_caption_track($matches[1], $matches[2]);
+        json_out(['deleted' => $matches[2], 'tracks' => caption_tracks($matches[1])]);
+    }
+
     if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{64})/log$~', $path, $matches)) {
         if (!job_by_id($matches[1])) {
             fail('Not found', 404);

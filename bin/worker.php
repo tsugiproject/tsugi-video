@@ -112,13 +112,15 @@ function whisper_supports_prompt(): bool
     return $supports;
 }
 
-// Map FFmpeg's out_time_us onto the 5%–75% slice of the job progress bar.
+// Map FFmpeg's out_time_us onto this rung's share of the 5%–75% progress slice.
 function progress_ffmpeg(string $line): void
 {
-    global $id, $duration;
+    global $id, $duration, $rungIndex, $rungCount;
     if (preg_match('/^out_time_us=(\d+)$/', $line, $matches) && $duration > 0) {
         $fraction = min(1, ((float) $matches[1] / 1e6) / $duration);
-        update_job($id, 'processing', 'hls', 5 + 70 * $fraction);
+        $count = max(1, (int) $rungCount);
+        $span = 70 / $count;
+        update_job($id, 'processing', 'hls', 5 + $span * (int) $rungIndex + $span * $fraction);
     }
 }
 
@@ -188,51 +190,103 @@ try {
     $statement->execute([$duration, $id]);
 
     $video = cfg()['video'];
-    $height = (int) $video['height'];
-    // Stream-copy only when the source is already H.264/AAC and not taller than the profile.
-    $copy = ($video['copy_compatible'] ?? false)
+    $sourceHeight = (int) ($videoStream['height'] ?? 0);
+    $sourceWidth = (int) ($videoStream['width'] ?? 0);
+    $heights = video_ladder_heights($video, $sourceHeight);
+    // Copy only a single rung that is already H.264/AAC at that height.
+    // A ladder is transcoded at every rung so the keyframes line up.
+    $copyAll = count($heights) === 1
+        && ($video['copy_compatible'] ?? false)
         && ($videoStream['codec_name'] ?? '') === 'h264'
         && ($audioStream['codec_name'] ?? '') === 'aac'
-        && (int) ($videoStream['height'] ?? 9999) <= $height;
+        && $sourceHeight <= $heights[0];
 
-    $args = [
-        pathof('ffmpeg'),
-        '-hide_banner', '-loglevel', 'warning', '-nostdin', '-y',
-        '-progress', 'pipe:1', '-stats_period', '2',
-        '-i', $job['source_path'],
-        '-map', '0:v:0', '-map', '0:a:0?',
-    ];
-    if ($copy) {
-        $args = array_merge($args, ['-c', 'copy']);
-        logmsg('HLS stream copy enabled');
-    } else {
-        // Even height, and never upscale past the source.
-        $scale = 'scale=-2:trunc(min(ih\\,' . $height . ')/2)*2';
-        $args = array_merge($args, [
-            '-vf', $scale,
-            '-c:v', 'libx264',
-            '-preset', (string) $video['preset'],
-            '-crf', (string) $video['crf'],
-            '-threads', (string) $video['threads'],
-            '-pix_fmt', 'yuv420p',
-            '-force_key_frames', 'expr:gte(t,n_forced*' . (int) $video['segment_seconds'] . ')',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-        ]);
-        logmsg('HLS transcoding enabled');
-    }
-
+    $rungCount = count($heights);
+    $rungIndex = 0;
+    $variants = [];
     update_job($id, 'processing', 'hls', 5);
-    $args = array_merge($args, [
-        '-f', 'hls',
-        '-hls_time', (string) $video['segment_seconds'],
-        '-hls_playlist_type', 'vod',
-        '-hls_segment_filename', $work . '/segment%05d.ts',
-        $work . '/index.m3u8',
-    ]);
-    command_run($args, 'progress_ffmpeg');
-    if (!is_file($work . '/index.m3u8')) {
-        throw new RuntimeException('No HLS playlist generated');
+    foreach ($heights as $height) {
+        $dir = $work . '/' . $height;
+        if (!is_dir($dir) && !mkdir($dir, 0770, true)) {
+            throw new RuntimeException('Could not create rendition directory');
+        }
+        $copy = $copyAll;
+        $args = [
+            pathof('ffmpeg'),
+            '-hide_banner', '-loglevel', 'warning', '-nostdin', '-y',
+            '-progress', 'pipe:1', '-stats_period', '2',
+            '-i', $job['source_path'],
+            '-map', '0:v:0', '-map', '0:a:0?',
+        ];
+        if ($copy) {
+            $args = array_merge($args, ['-c', 'copy']);
+            logmsg('HLS ' . $height . ' stream copy');
+        } else {
+            $args = array_merge($args, [
+                '-vf', 'scale=-2:' . $height,
+                '-c:v', 'libx264',
+                '-preset', (string) $video['preset'],
+                '-crf', (string) $video['crf'],
+                '-threads', (string) $video['threads'],
+                '-pix_fmt', 'yuv420p',
+                '-force_key_frames', 'expr:gte(t,n_forced*' . (int) $video['segment_seconds'] . ')',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+            ]);
+            logmsg('HLS ' . $height . ' transcode');
+        }
+        $args = array_merge($args, [
+            '-f', 'hls',
+            '-hls_time', (string) $video['segment_seconds'],
+            '-hls_playlist_type', 'vod',
+        ]);
+        if (!$copy) {
+            $args[] = '-hls_flags';
+            $args[] = 'independent_segments';
+        }
+        $args = array_merge($args, [
+            '-hls_segment_filename', $dir . '/segment%05d.ts',
+            $dir . '/index.m3u8',
+        ]);
+        command_run($args, 'progress_ffmpeg');
+        if (!is_file($dir . '/index.m3u8')) {
+            throw new RuntimeException('No HLS playlist generated for ' . $height);
+        }
+        $width = $sourceWidth;
+        $renderedHeight = $height;
+        $sample = glob($dir . '/segment*.ts') ?: [];
+        if ($sample !== []) {
+            $probed = probe($sample[0]);
+            foreach (($probed['streams'] ?? []) as $stream) {
+                if (($stream['codec_type'] ?? '') === 'video') {
+                    $width = (int) ($stream['width'] ?? $width);
+                    $renderedHeight = (int) ($stream['height'] ?? $renderedHeight);
+                    break;
+                }
+            }
+        }
+        $bytes = 0;
+        foreach (glob($dir . '/segment*.ts') ?: [] as $segment) {
+            $bytes += (int) (filesize($segment) ?: 0);
+        }
+        $bandwidth = $duration > 0 ? (int) ceil(($bytes * 8) / $duration) : 1000000;
+        $variants[] = [
+            'bandwidth' => max(1, $bandwidth),
+            'width' => max(2, $width),
+            'height' => max(2, $renderedHeight),
+            'uri' => $height . '/index.m3u8',
+        ];
+        $rungIndex++;
+    }
+    usort($variants, static fn (array $a, array $b): int => $b['bandwidth'] <=> $a['bandwidth']);
+    $master = ["#EXTM3U", "#EXT-X-VERSION:3"];
+    foreach ($variants as $variant) {
+        $master[] = '#EXT-X-STREAM-INF:BANDWIDTH=' . $variant['bandwidth']
+            . ',RESOLUTION=' . $variant['width'] . 'x' . $variant['height'];
+        $master[] = $variant['uri'];
+    }
+    if (file_put_contents($work . '/index.m3u8', implode("\n", $master) . "\n") === false) {
+        throw new RuntimeException('Could not write master playlist');
     }
 
     if ((int) $job['captions'] === 1 && (bool) cfg()['captions']['enabled']) {

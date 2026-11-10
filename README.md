@@ -7,7 +7,7 @@ Standalone PHP + SQLite video processing, captioning, HLS publishing and iframe 
 - Basic-auth administrative dashboard; upload and status (auto-refresh every five seconds)
 - Authenticated Bearer API: enqueue an existing allowlisted server path, upload a file, query jobs, retry failures
 - SQLite queue; PHP CLI worker claims one job at a time using a portable `flock()` lock
-- FFmpeg stream-copy fast path for compatible H.264/AAC inputs, else single-rendition H.264/AAC transcoding to VOD HLS
+- FFmpeg HLS ladder at the configured heights that fit the source. A single compatible H.264/AAC rung can be stream-copied
 - FFmpeg progress reporting, `ffprobe` metadata, Whisper WebVTT captions
 - Atomic publication of complete HLS files (working directory renamed within configured storage root)
 - Static media via Apache Alias; public watch and iframe embed pages using local hls.js when installed
@@ -80,6 +80,10 @@ php bin/start-inbox.php --limit 1 --apply
 
 A run only reports unless you pass `--apply`. It hashes each video and leaves queued, processing, completed, and failed jobs alone. With `--apply`, new files are copied into storage, placed on the collection and logical key from `media.yaml`, and keep that course's vocabulary prompt and replacement rules. Whisper receives the vocabulary as `--prompt`. After transcription, the replacement rules are applied to the caption text and timestamps are left unchanged. One worker is started when anything new is queued. A finished job starts the next worker, which stops if the lock is held or the queue is empty. Cron remains the backstop.
 
+## Captions
+
+A finished video has a Captions link on the dashboard and in the library. Upload a WebVTT file there. English replaces `captions.vtt`. Another language, such as `es`, is stored as `captions-es.vtt` next to the playlist and shown as its own player track. Uploading a language that is already present replaces that track. The cue times in the file are what the player uses.
+
 ## Security and operational notes
 
 - Public video URLs have no authentication. Management and API endpoints require credentials.
@@ -89,7 +93,7 @@ A run only reports unless you pass `--apply`. It hashes each video and leaves qu
 - The current MVP is **single-host**, single-worker, and not intended for multi-host shared SQLite queues. `work` and `media` must be on the same filesystem for atomic rename.
 - If a worker is killed or the machine reboots mid-job, its job stays in `processing`. Recovery is currently a **manual database operation** (or a follow-up Cursor task): don't automatically requeue potentially active jobs.
 - External USB drive unplugging can lead to storage errors. Check mounts before starting the worker; see `docs/CURSOR_HANDOFF.md` for follow-up requirements.
-- The initial transcoder produces a single HLS representation, not an adaptive bitrate ladder. MP4s compatible with stream copy may have nonuniform segment lengths due to source keyframes.
+- The ladder is the even heights in `video.heights` that are not taller than the source. A shorter video keeps its own height as the top rung instead of being scaled up. One compatible H.264/AAC size is stream-copied; a ladder is transcoded so the rungs share keyframe times. Videos already published stay as they are until they are encoded again.
 - Browser video upload uses PHP temp space first, so large uploads require suitable PHP temp storage and limits.
 
 ## License

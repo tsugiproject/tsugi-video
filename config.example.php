@@ -19,7 +19,8 @@ return [
         'lock_file' => __DIR__ . '/var/worker.lock',
     ],
     'video' => [
-        'height' => 720,
+        'heights' => [1080, 720, 360], // rungs taller than the source are skipped
+        'height' => 720, // used only when heights is omitted
         'crf' => 24,
         'preset' => 'veryfast',
         'threads' => 2,

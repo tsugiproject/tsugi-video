@@ -73,7 +73,7 @@ async function loadLibrary(){
    const where=document.createElement('td');
    if(!(j.placements||[]).length) where.textContent='—';
    else slotLines(where,j);
-   const status=document.createElement('td');status.textContent=j.status;
+   const status=document.createElement('td');status.textContent=j.status;if(j.status==='failed')status.className='status-failed';
    const completed=document.createElement('td');
    completed.className='nowrap';
    completed.textContent=j.status==='completed'?when(j.finished_at):'—';
@@ -82,7 +82,8 @@ async function loadLibrary(){
     const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';
     const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';
     const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));
-    actions.append(watch,' · ',pair,' · ');
+    const caps=document.createElement('a');caps.href=api('/captions.php')+'?id='+encodeURIComponent(j.id);caps.textContent='Captions';
+    actions.append(watch,' · ',pair,' · ',caps,' · ');
    }
    const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;
    if(j.status==='processing') del.disabled=true;

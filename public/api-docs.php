@@ -38,6 +38,7 @@ $base = rtrim(cfg()['base_url'], '/');
             <a href="#one">One job</a>
             <a href="#upload">Upload</a>
             <a href="#import">Server path</a>
+            <a href="#captions">Captions</a>
             <a href="#suggest">Names</a>
             <a href="#catalog">Collections</a>
             <a href="#log">Log</a>
@@ -177,6 +178,49 @@ $base = rtrim(cfg()['base_url'], '/');
                 "captions": True,
             }).encode()
             job = call("POST", "/api/jobs", body, "application/json")
+            PY
+        ); ?>
+    </section>
+
+    <section id="captions">
+        <h2>Upload captions</h2>
+        <p><code>POST /api/jobs/{id}/captions</code> as multipart form data on a published video. <code>language</code> is a 2 or 3 letter code. <code>en</code> replaces <code>captions.vtt</code>. Any other code is saved as <code>captions-es.vtt</code> and becomes another track on the same video. The file must be WebVTT and at most 2 MB. <code>DELETE /api/jobs/{id}/captions/{language}</code> removes that track.</p>
+        <?php example(
+            <<<'SH'
+            curl -sS -H "Authorization: Bearer $TOKEN" \
+              -F "language=es" \
+              -F "file=@captions-es.vtt" \
+              "$BASE/api/jobs/$ID/captions"
+            curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              "$BASE/api/jobs/$ID/captions/es"
+            SH,
+            <<<'PY'
+            import uuid
+
+            path = "captions-es.vtt"
+            boundary = uuid.uuid4().hex
+
+            def field(name, value):
+                return (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                    f"{value}\r\n"
+                ).encode()
+
+            body = b"".join([
+                field("language", "es"),
+                (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="file"; filename="captions-es.vtt"\r\n'
+                    f"Content-Type: text/vtt\r\n\r\n"
+                ).encode(),
+                open(path, "rb").read(),
+                f"\r\n--{boundary}--\r\n".encode(),
+            ])
+            tracks = call("POST", "/api/jobs/" + job_id + "/captions", body, f"multipart/form-data; boundary={boundary}")
+            print(tracks["tracks"])
+            call("DELETE", "/api/jobs/" + job_id + "/captions/es", b"{}", "application/json")
             PY
         ); ?>
     </section>

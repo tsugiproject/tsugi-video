@@ -25,41 +25,43 @@
 })();
 
 function firefoxCaptions(video, hls) {
-  const trackEl = video.querySelector('track');
-  if (!trackEl) return;
+  const trackEls = [...video.querySelectorAll('track')];
+  if (!trackEls.length) return;
   video.classList.add('firefox-captions');
 
   const box = document.createElement('div');
   box.className = 'captions';
   video.parentElement.append(box);
 
-  let cues = [];
-  fetch(trackEl.src)
-    .then((response) => response.text())
-    .then((text) => {
-      cues = parseVtt(text);
-      render();
-    })
-    .catch(() => {});
+  const cues = new Map();
 
-  // hls.js attaches after the track is parsed and can leave a default track disabled.
-  function showDefault() {
-    const track = trackEl.track;
-    if (track && trackEl.default && track.mode !== 'showing') track.mode = 'showing';
-    render();
+  function showing() {
+    return trackEls.find((el) => el.track && el.track.mode === 'showing') || null;
   }
 
   function render() {
     box.replaceChildren();
-    const track = trackEl.track;
-    if (track && track.mode !== 'showing') return;
+    const el = showing();
+    if (!el) return;
     const time = video.currentTime || 0;
-    for (const cue of cues) {
+    for (const cue of cues.get(el) || []) {
       if (time < cue.start || time >= cue.end) continue;
       const line = document.createElement('span');
       line.textContent = cue.text;
       box.append(line);
     }
+  }
+
+  Promise.all(trackEls.map((el) => fetch(el.src).then((response) => response.text()).then((text) => {
+    cues.set(el, parseVtt(text));
+  }))).then(render).catch(() => {});
+
+  // hls.js attaches after the track is parsed and can leave a default track disabled.
+  function showDefault() {
+    const preferred = trackEls.find((el) => el.default) || trackEls[0];
+    const track = preferred.track;
+    if (track && track.mode !== 'showing') track.mode = 'showing';
+    render();
   }
 
   hls.on(Hls.Events.MANIFEST_PARSED, showDefault);

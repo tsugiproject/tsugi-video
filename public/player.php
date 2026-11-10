@@ -35,7 +35,17 @@ $sharePath = $keyedCollection !== ''
 
 $embed = ($_GET['embed'] ?? '') === '1';
 $hls = url_path(media_public_path($id) . '/index.m3u8');
-$captions = is_file(content_dir('media', $id) . '/captions.vtt');
+$tracks = caption_tracks($id);
+$defaultLanguage = null;
+foreach ($tracks as $track) {
+    if ($track['language'] === 'en') {
+        $defaultLanguage = 'en';
+        break;
+    }
+}
+if ($defaultLanguage === null && $tracks !== []) {
+    $defaultLanguage = $tracks[0]['language'];
+}
 
 header('Referrer-Policy: no-referrer');
 // frame-ancestors * lets other sites embed /embed/{id}. Scripts and media stay on this host.
@@ -54,9 +64,9 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
 <div class="player-wrap">
     <div class="video-stage">
     <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" crossorigin="anonymous">
-        <?php if ($captions): ?>
-            <track kind="captions" src="<?= e(url_path(media_public_path($id) . '/captions.vtt')) ?>" srclang="en" label="English" default>
-        <?php endif; ?>
+        <?php foreach ($tracks as $track): ?>
+            <track kind="captions" src="<?= e(url_path(media_public_path($id) . '/' . $track['file'])) ?>" srclang="<?= e($track['language']) ?>" label="<?= e($track['label']) ?>"<?= $track['language'] === $defaultLanguage ? ' default' : '' ?>>
+        <?php endforeach; ?>
     </video>
     </div>
     <?php if (!$embed): ?>

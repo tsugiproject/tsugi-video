@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 $uri = request_path();
 
-if (preg_match('~^/media/[a-f0-9]{2}/[a-f0-9]{2}/([a-f0-9]{64})/(index\.m3u8|segment[0-9]{5}\.ts|captions\.vtt)$~', $uri, $matches)) {
+if (preg_match('~^/media/[a-f0-9]{2}/[a-f0-9]{2}/([a-f0-9]{64})/((?:[0-9]{2,4}/)?(?:index\.m3u8|segment[0-9]{5}\.ts)|captions\.vtt|captions-[a-z]{2,3}\.vtt)$~', $uri, $matches)) {
     $_GET['id'] = $matches[1];
     $_GET['file'] = $matches[2];
     require __DIR__ . '/media.php';
