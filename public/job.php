@@ -125,9 +125,9 @@ $base = public_base_url();
         </table>
         <p class="actions">
             <?php if ($ready): ?>
-                <a href="<?= e(url_path('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a>
+                <a href="<?= e(public_url('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a>
                 ·
-                <a href="<?= e(url_path('/embed/' . $id)) ?>" target="_blank" rel="noopener">Embed</a>
+                <a href="<?= e(public_url('/embed/' . $id)) ?>" target="_blank" rel="noopener">Embed</a>
                 <button type="button" class="texty" data-copy="<?= e($base . '/embed/' . $id) ?>">Copy embed</button>
                 ·
                 <a href="<?= e(url_path('/captions.php') . '?id=' . $id) ?>">Captions</a>

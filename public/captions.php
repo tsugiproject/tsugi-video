@@ -32,7 +32,7 @@ $names = caption_language_names();
 <main>
     <header>
         <h1>Captions</h1>
-        <span class="muted"><a href="<?= e(url_path('/')) ?>">Dashboard</a> · <a href="<?= e(url_path('/library.php')) ?>">Library</a><?php if ($ready): ?> · <a href="<?= e(url_path('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a><?php endif; ?></span>
+        <span class="muted"><a href="<?= e(url_path('/')) ?>">Dashboard</a> · <a href="<?= e(url_path('/library.php')) ?>">Library</a><?php if ($ready): ?> · <a href="<?= e(public_url('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a><?php endif; ?></span>
     </header>
 
     <section>

@@ -118,16 +118,6 @@ function public_host_is_limited(): bool
     return $host !== '' && $host === url_host(public_base_url());
 }
 
-function request_is_api(): bool
-{
-    $path = request_path();
-    if ($path === '/api' || $path === '/api.php' || str_starts_with($path, '/api/')) {
-        return true;
-    }
-    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
-    return $script === 'api.php' || str_ends_with($script, '/api.php');
-}
-
 // URL path of this install, e.g. "/tsugi-video" under MAMP or "" at the vhost root.
 function base_path(): string
 {
@@ -138,6 +128,11 @@ function base_path(): string
 function url_path(string $path): string
 {
     return base_path() . '/' . ltrim($path, '/');
+}
+
+function public_url(string $path): string
+{
+    return public_base_url() . '/' . ltrim($path, '/');
 }
 
 // Request path with the install prefix and an internal /public rewrite removed.
@@ -337,6 +332,42 @@ function fail(string $error, int $code = 400): never
     json_out(['error' => $error], $code);
 }
 
+function redirect_to_url(): ?string
+{
+    $value = cfg()['redirect_to'] ?? null;
+    if (!is_string($value)) {
+        return null;
+    }
+    $value = trim($value);
+    if ($value === '' || preg_match('/[\r\n]/', $value) || preg_match('#\Ahttps?://#i', $value) !== 1) {
+        return null;
+    }
+    return $value;
+}
+
+function public_request_is_playback(): bool
+{
+    $path = request_path();
+    if (preg_match('~^/(?:watch|embed|media)(?:/|$)~', $path) === 1) {
+        return true;
+    }
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+    return $script === 'player.php' || str_ends_with($script, '/player.php')
+        || $script === 'media.php' || str_ends_with($script, '/media.php');
+}
+
+// A disallowed public-host URL redirects when redirect_to is set. Otherwise it says the server is read-only.
+function refuse_public_host(): never
+{
+    $target = redirect_to_url();
+    if ($target !== null) {
+        header('Cache-Control: no-store');
+        header('Location: ' . $target, true, 302);
+        exit;
+    }
+    fail_page('This is a read-only video server.', 403);
+}
+
 function fail_page(string $error, int $code): never
 {
     $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
@@ -350,22 +381,50 @@ function fail_page(string $error, int $code): never
     fail($error, $code);
 }
 
-// The cached host serves playback only. The API, writes, and Basic authentication stay on manage_url.
-function enforce_public_host_limits(): void
+// Playback is cached on the public host. The player page and its media stay on that host.
+function redirect_playback_to_public_host(): void
 {
     $manage = separate_manage_url();
-    if ($manage === null || !public_host_is_limited()) {
+    if ($manage === null || request_host() !== url_host($manage)) {
         return;
     }
-    if (request_is_api()) {
-        fail_page('The API is at ' . $manage . '. This host only serves playback.', 404);
+    $path = request_path();
+    if (preg_match('~^/(?:watch|embed)(?:/|$)~', $path) !== 1) {
+        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        if ($script !== 'player.php' && !str_ends_with($script, '/player.php')) {
+            return;
+        }
+        $prefix = ($_GET['embed'] ?? '') === '1' ? '/embed/' : '/watch/';
+        $collection = (string) ($_GET['collection'] ?? '');
+        $key = (string) ($_GET['key'] ?? '');
+        $id = (string) ($_GET['id'] ?? '');
+        if ($collection !== '' && $key !== '') {
+            $path = $prefix . rawurlencode($collection) . '/' . rawurlencode($key);
+        } elseif (is_content_id($id)) {
+            $path = $prefix . $id;
+        } else {
+            return;
+        }
+    }
+    $params = $_GET;
+    unset($params['id'], $params['embed'], $params['collection'], $params['key']);
+    $query = http_build_query($params);
+    header('Cache-Control: no-store');
+    header('Location: ' . public_base_url() . $path . ($query !== '' ? '?' . $query : ''), true, 302);
+    exit;
+}
+
+// The cached host serves watch and embed pages. Other URLs are refused without naming the management host.
+function enforce_public_host_limits(): void
+{
+    if (separate_manage_url() === null || !public_host_is_limited()) {
+        return;
     }
     $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-    if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+    if (public_request_is_playback() && in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
         return;
     }
-    header('Allow: GET, HEAD, OPTIONS');
-    fail_page('Send ' . $method . ' to ' . $manage . '. This host only serves playback.', 405);
+    refuse_public_host();
 }
 
 // MAMP's mod_fastcgi does not fill PHP_AUTH_*. The header survives as
@@ -413,8 +472,7 @@ function admin_auth(): void
         && hash_equals((string) $conf['admin_password'], (string) $password);
     if (!$bearerOk && !$basicOk) {
         if ($limited) {
-            $manage = rtrim((string) $conf['manage_url'], '/');
-            fail_page('Sign in at ' . $manage . '. This host does not accept Basic authentication.', 401);
+            refuse_public_host();
         }
         header('WWW-Authenticate: Basic realm="Video Server Admin"');
         fail('Authentication required', 401);
@@ -1746,4 +1804,5 @@ function apply_caption_replacements(string $path, string $rulesText): int
     return $count;
 }
 
+redirect_playback_to_public_host();
 enforce_public_host_limits();
