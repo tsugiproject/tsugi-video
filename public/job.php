@@ -54,7 +54,6 @@ if ($seconds !== null && $seconds > 0) {
         ? sprintf('%d:%02d:%02d', $hours, $minutes, $total % 60)
         : sprintf('%d:%02d', $minutes, $total % 60);
 }
-$base = public_base_url();
 ?>
 <!doctype html>
 <html lang="en">
@@ -89,14 +88,24 @@ $base = public_base_url();
             <tr><th>Ended</th><td><time data-utc="<?= e((string) ($job['finished_at'] ?? '')) ?>"><?= e($job['finished_at'] ?: '—') ?></time></td></tr>
             <tr><th>Encode time</th><td><?= e(format_elapsed(encode_seconds($job))) ?></td></tr>
             <tr>
-                <th>Placements</th>
+                <th>Logical key link</th>
                 <td>
                     <?php if ($placements === []): ?>
                         —
                     <?php else: ?>
                         <?php foreach ($placements as $slot): ?>
-                            <small class="nowrap"><a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a> <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button></small>
+                            <div class="nowrap"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?><?php if ($ready): ?> <a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e($slot['embed_url']) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button><?php endif; ?></div>
                         <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <tr>
+                <th>SHA-256 link</th>
+                <td>
+                    <?php if ($ready): ?>
+                        <span class="nowrap"><a href="<?= e(public_url('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e(public_url('/embed/' . $id)) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e(public_url('/embed/' . $id)) ?>">Copy embed</button></span>
+                    <?php else: ?>
+                        —
                     <?php endif; ?>
                 </td>
             </tr>
@@ -125,12 +134,7 @@ $base = public_base_url();
         </table>
         <p class="actions">
             <?php if ($ready): ?>
-                <a href="<?= e(public_url('/watch/' . $id)) ?>" target="_blank" rel="noopener">Watch</a>
-                ·
-                <a href="<?= e(public_url('/embed/' . $id)) ?>" target="_blank" rel="noopener">Embed</a>
-                <button type="button" class="texty" data-copy="<?= e($base . '/embed/' . $id) ?>">Copy embed</button>
-                ·
-                <a href="<?= e(url_path('/captions.php') . '?id=' . $id) ?>">Captions</a>
+                <a href="<?= e(url_path('/captions.php') . '?id=' . $id) ?>">Manage Captions</a>
                 ·
             <?php endif; ?>
             <?php if ($job['status'] === 'failed'): ?>
