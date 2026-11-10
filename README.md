@@ -81,4 +81,4 @@ Job stages are queued, probe, hls, audio, whisper, publish, completed/failed. Pr
 
 ## License
 
-MIT; see LICENSE. hls.js and whisper.cpp are separate upstream components and must retain their respective licenses.
+Copyright (C) 2026 Charles Severance. GNU Affero General Public License version 3 or any later version; see LICENSE. hls.js and whisper.cpp are separate upstream components and keep their own licenses.
