@@ -11,7 +11,7 @@ Standalone PHP + SQLite video processing, captioning, HLS publishing and iframe 
 - FFmpeg progress reporting, `ffprobe` metadata, Whisper WebVTT captions
 - Atomic publication of complete HLS files (working directory renamed within configured storage root)
 - Static media via Apache Alias; public watch and iframe embed pages using local hls.js when installed
-- Example Apache vhost, Ubuntu cron, macOS launchd, OS dependency installers and diagnostic script
+- Example Apache vhost, Cloudflare cache notes, Ubuntu cron, macOS launchd, OS dependency installers and diagnostic script
 
 ## Quick start
 
@@ -22,7 +22,7 @@ Standalone PHP + SQLite video processing, captioning, HLS publishing and iframe 
 5. `bash bin/install-hlsjs.sh` to install a local copy of hls.js (the player will not contact an external CDN).
 6. Local development: `php -S localhost:8080 -t public public/router.php` and set `base_url` to `http://localhost:8080`; visit that address and authenticate with the configured admin user/password.
 7. Upload a short MP4 and run `php bin/worker.php` in another shell. Visit the completed watch/embed URL.
-8. For production, configure the Apache example, DNS/HTTPS, access permissions, and cron. Serve ONLY `public/` plus the separate `/media/` Alias. Never publish `config.php`, SQLite DB, originals or work directories.
+8. For production, configure the Apache example, DNS/HTTPS, access permissions, and cron. Serve ONLY `public/` plus the separate `/media/` Alias. Never publish `config.php`, SQLite DB, originals or work directories. When serving and admin are on two hosts, the Cloudflare proxy, cache rule, and request-header rule are in `deploy/cloudflare.md`.
 
 ### Ubuntu dependency setup
 
