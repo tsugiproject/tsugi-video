@@ -9,6 +9,7 @@ $recent = list_jobs(['limit' => 10, 'offset' => 0, 'sort' => 'created', 'dir' =>
 $jobs = $recent['jobs'];
 $jobTotal = $recent['total'];
 $counts = job_counts();
+$incoming = list_import_files();
 ?>
 <!doctype html>
 <html lang="en">
@@ -22,7 +23,7 @@ $counts = job_counts();
 <main>
     <header>
         <h1>Video Server</h1>
-        <span class="muted"><?= e(rtrim(cfg()['base_url'], '/')) ?> · <a href="<?= e(url_path('/api-docs.php')) ?>">API</a></span>
+        <span class="muted"><?= e(rtrim(cfg()['base_url'], '/')) ?> · <a href="<?= e(url_path('/library.php')) ?>">Library</a> · <a href="<?= e(url_path('/api-docs.php')) ?>">API</a></span>
         <p class="muted sysinfo"><?= e(server_summary()) ?></p>
     </header>
 
@@ -36,13 +37,21 @@ $counts = job_counts();
     </section>
 
     <section>
-        <h2>Upload a video</h2>
+        <h2>Add a video</h2>
         <form id="upload" enctype="multipart/form-data">
             <div class="form-row">
                 <label class="browse">Browse
-                    <input type="file" name="file" accept="video/*" required>
+                    <input type="file" name="file" accept="video/*">
                 </label>
                 <span id="file-name" class="muted">No file chosen</span>
+                <label>Incoming file
+                    <select id="incoming" name="incoming">
+                        <option value=""><?= $incoming ? 'Choose a file already on the server' : 'No files in the incoming folder' ?></option>
+                        <?php foreach ($incoming as $file): ?>
+                            <option value="<?= e($file['path']) ?>"><?= e($file['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
                 <label class="check"><input type="checkbox" name="captions" value="1" checked> Generate Whisper captions</label>
             </div>
             <div class="form-row">
@@ -57,10 +66,10 @@ $counts = job_counts();
                 </label>
             </div>
             <div class="form-row">
-                <button type="submit">Upload and enqueue</button>
+                <button type="submit" id="enqueue">Upload and enqueue</button>
                 <output id="upload-status"></output>
             </div>
-            <p class="muted note">If you upload a video with the same collection and logical key, a watch or embed address that uses that collection and key plays the new video. The original and the new video both remain playable by their SHA-256 address.</p>
+            <p class="muted note">The incoming list is every file in the configured import folders. Enqueueing one copies it into storage and leaves the original file where it is. If you add a video with the same collection and logical key, a watch or embed address that uses that collection and key plays the new video. The original and the new video both remain playable by their SHA-256 address.</p>
         </form>
     </section>
 
@@ -99,40 +108,6 @@ $counts = job_counts();
             </tbody>
         </table>
         <p class="pager"><button type="button" class="texty" id="jobs-more"<?= $jobTotal > count($jobs) ? '' : ' hidden' ?>>More</button></p>
-    </section>
-
-    <section id="library-section">
-        <h2>Library</h2>
-        <div class="form-row library-tools">
-            <label>Collection
-                <select id="library-collection">
-                    <option value="">All videos</option>
-                </select>
-            </label>
-            <label>Search
-                <input id="library-search" type="search" placeholder="Title, file, or key">
-            </label>
-            <label>Sort
-                <select id="library-sort">
-                    <option value="title:asc">Title</option>
-                    <option value="title:desc">Title, reverse</option>
-                    <option value="created:desc">Newest</option>
-                    <option value="created:asc">Oldest</option>
-                    <option value="collection:asc">Collection</option>
-                </select>
-            </label>
-        </div>
-        <table>
-            <thead>
-                <tr><th>Title</th><th>Collection</th><th>Status</th><th></th></tr>
-            </thead>
-            <tbody id="library"></tbody>
-        </table>
-        <p class="pager">
-            <button type="button" class="texty" id="library-prev">Previous</button>
-            <span id="library-page" class="muted"></span>
-            <button type="button" class="texty" id="library-next">Next</button>
-        </p>
     </section>
 </main>
 <script>window.VIDEO_BASE=<?= json_encode(base_path(), JSON_UNESCAPED_SLASHES) ?>;</script>

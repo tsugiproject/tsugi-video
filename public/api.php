@@ -27,6 +27,10 @@ try {
         ]);
     }
 
+    if ($method === 'GET' && $path === '/imports') {
+        json_out(['files' => list_import_files()]);
+    }
+
     if ($method === 'GET' && $path === '/collections' && !array_key_exists('q', $_GET)) {
         json_out(['collections' => list_collections()]);
     }

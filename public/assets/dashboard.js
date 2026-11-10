@@ -91,7 +91,40 @@ suggest(document.querySelector('[name=logical_key]'),async q=>{
 let jobLimit=10;
 const jobsMore=document.getElementById('jobs-more');
 jobsMore.addEventListener('click',()=>{jobLimit+=10;refresh();});
+const incoming=document.getElementById('incoming');
+const enqueue=document.getElementById('enqueue');
+let incomingSig='';
+function syncSource(){
+ enqueue.textContent=incoming.value?'Enqueue incoming file':'Upload and enqueue';
+}
+async function refreshIncoming(){
+ try{
+  const r=await fetch(api('/api/imports'),{cache:'no-store'});
+  if(!r.ok)return;
+  const data=await r.json();
+  const files=data.files||[];
+  const sig=files.map(file=>file.path+'\t'+file.bytes).join('\n');
+  if(sig===incomingSig)return;
+  const selected=incoming.value;
+  incoming.replaceChildren();
+  const blank=document.createElement('option');
+  blank.value='';
+  blank.textContent=files.length?'Choose a file already on the server':'No files in the incoming folder';
+  incoming.append(blank);
+  for(const file of files){
+   const option=document.createElement('option');
+   option.value=file.path;
+   option.textContent=file.label;
+   incoming.append(option);
+  }
+  if(selected && [...incoming.options].some(option=>option.value===selected)) incoming.value=selected;
+  else if(selected && !fileInput.files.length) fileName.textContent='No file chosen';
+  incomingSig=sig;
+  syncSource();
+ }catch(e){console.warn('Could not list incoming files',e)}
+}
 async function refresh(){
+ refreshIncoming();
  try{
   const r=await fetch(api('/api/jobs?limit='+jobLimit+'&offset=0&sort=created&dir=desc'),{cache:'no-store'}); if(!r.ok)return;
   const data=await r.json();
@@ -107,7 +140,7 @@ async function refresh(){
    const whenCell=datesCell(j);
    const d=document.createElement('td');
    if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));d.append(pair,' · ');}
-   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh();loadLibrary();};d.append(retry,' ');}
+   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry,' ');}
    const log=document.createElement('a');log.href=api('/api/jobs/'+j.id+'/log');log.target='_blank';log.rel='noopener';log.textContent='Log';d.append(log);
    if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;d.append(del);}
    tr.append(a,b,c,whenCell,d);tbody.append(tr);
@@ -115,86 +148,37 @@ async function refresh(){
   jobsMore.hidden=jobs.length>=(data.total||0);
  }catch(e){console.warn('Could not refresh status',e)}
 }
-const libraryPageSize=20;
-let libraryPage=0;
-const libraryCollection=document.getElementById('library-collection');
-const librarySearch=document.getElementById('library-search');
-const librarySort=document.getElementById('library-sort');
-let libraryNames='';
-async function loadCollections(){
- const r=await fetch(api('/api/collections'),{cache:'no-store'});
- if(!r.ok)return;
- const data=await r.json();
- const names=(data.collections||[]).join('\n');
- if(names===libraryNames)return;
- libraryNames=names;
- const selected=libraryCollection.value;
- libraryCollection.replaceChildren(new Option('All videos',''));
- for(const name of data.collections||[]) libraryCollection.append(new Option(name,name));
- if([...(libraryCollection.options)].some(option=>option.value===selected)) libraryCollection.value=selected;
-}
-async function loadLibrary(){
- try{
-  await loadCollections();
-  const [sort,dir]=(librarySort.value||'title:asc').split(':');
-  const params=new URLSearchParams({limit:String(libraryPageSize),offset:String(libraryPage*libraryPageSize),sort,dir,q:librarySearch.value.trim(),collection:libraryCollection.value});
-  const r=await fetch(api('/api/jobs?'+params),{cache:'no-store'});
-  if(!r.ok)return;
-  const data=await r.json();
-  const jobs=data.jobs||[];
-  const total=data.total||0;
-  const tbody=document.getElementById('library');
-  tbody.replaceChildren();
-  if(!jobs.length && libraryPage>0 && total>0){libraryPage=Math.max(0,Math.ceil(total/libraryPageSize)-1);return loadLibrary();}
-  if(!jobs.length){
-   const tr=document.createElement('tr');
-   const td=document.createElement('td');
-   td.colSpan=4;td.className='muted';td.textContent='No videos';
-   tr.append(td);tbody.append(tr);
-  }
-  for(const j of jobs){
-   const tr=document.createElement('tr');
-   const title=document.createElement('td');
-   title.textContent=j.display_title||j.title;
-   if((j.display_title||j.title)!==j.original_name){const small=document.createElement('small');small.textContent=j.original_name;title.append(small);}
-   const where=document.createElement('td');
-   if(!(j.placements||[]).length) where.textContent='—';
-   else slotLines(where,j);
-   const status=document.createElement('td');status.textContent=j.status;
-   const actions=document.createElement('td');
-   if(j.status==='completed'){
-    const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';
-    const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';
-    const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));
-    actions.append(watch,' · ',pair,' · ');
-   }
-   const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;
-   if(j.status==='processing') del.disabled=true;
-   actions.append(del);
-   tr.append(title,where,status,actions);tbody.append(tr);
-  }
-  const start=total?libraryPage*libraryPageSize+1:0;
-  const end=Math.min(total,start+jobs.length-1);
-  document.getElementById('library-page').textContent=total?start+'–'+end+' of '+total:'0 videos';
-  document.getElementById('library-prev').disabled=libraryPage<=0;
-  document.getElementById('library-next').disabled=(libraryPage+1)*libraryPageSize>=total;
- }catch(e){console.warn('Could not load library',e)}
-}
-let libraryTimer=null;
-function libraryChanged(){libraryPage=0;loadLibrary();}
-libraryCollection.addEventListener('change',libraryChanged);
-librarySort.addEventListener('change',libraryChanged);
-librarySearch.addEventListener('input',()=>{clearTimeout(libraryTimer);libraryTimer=setTimeout(libraryChanged,200);});
-document.getElementById('library-prev').addEventListener('click',()=>{if(libraryPage>0){libraryPage-=1;loadLibrary();}});
-document.getElementById('library-next').addEventListener('click',()=>{libraryPage+=1;loadLibrary();});
 const form=document.getElementById('upload');
 const fileInput=form.querySelector('input[type=file]');
 const fileName=document.getElementById('file-name');
-fileInput.addEventListener('change',()=>{fileName.textContent=fileInput.files[0]?.name||'No file chosen';});
+fileInput.addEventListener('change',()=>{
+ if(fileInput.files[0]){incoming.value='';fileName.textContent=fileInput.files[0].name;}
+ else if(!incoming.value) fileName.textContent='No file chosen';
+ syncSource();
+});
+incoming.addEventListener('change',()=>{
+ if(incoming.value){fileInput.value='';fileName.textContent=incoming.selectedOptions[0].textContent;}
+ else if(!fileInput.files.length) fileName.textContent='No file chosen';
+ syncSource();
+});
 form.addEventListener('submit',async e=>{
- e.preventDefault();const output=document.getElementById('upload-status');output.textContent='Uploading…';
+ e.preventDefault();const output=document.getElementById('upload-status');
+ const source=incoming.value;
+ if(!source && !fileInput.files.length){output.textContent='Choose a file to upload or an incoming file.';return;}
+ output.textContent=source?'Enqueueing…':'Uploading…';
  try{
-  const r=await fetch(api('/api/uploads'),{method:'POST',body:new FormData(form)});
+  let r;
+  if(source){
+   r=await fetch(api('/api/jobs'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    source,
+    title:form.title.value.trim(),
+    collection:form.collection.value.trim(),
+    logical_key:form.logical_key.value.trim(),
+    captions:form.captions.checked
+   })});
+  }else{
+   r=await fetch(api('/api/uploads'),{method:'POST',body:new FormData(form)});
+  }
   const text=await r.text();
   let data;
   try{data=JSON.parse(text);}catch{throw new Error((text||'Upload failed').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,240));}
@@ -202,7 +186,7 @@ form.addEventListener('submit',async e=>{
   const slot=(data.placements||[])[0];
   const where=slot?slot.collection+'/'+slot.logical_key+' ':'';
   output.textContent=(data.status==='completed'?'Already available ':data.status==='queued'?'Queued ':'Saved ')+where+data.id;
-  form.reset();fileName.textContent='No file chosen';refresh();loadLibrary();
+  form.reset();fileName.textContent='No file chosen';syncSource();refresh();
  }catch(err){output.textContent=err.message;}
 });
 document.querySelector('main').addEventListener('click', async (event) => {
@@ -236,10 +220,9 @@ document.querySelector('main').addEventListener('click', async (event) => {
     try { data = JSON.parse(text); } catch { throw new Error((text || 'Delete failed').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240)); }
     if (!r.ok) throw new Error(data.error || 'Delete failed');
     refresh();
-    loadLibrary();
   } catch (err) {
     button.disabled = false;
     alert(err.message);
   }
 });
-setInterval(refresh,5000);refresh();loadLibrary();
+setInterval(refresh,5000);refresh();

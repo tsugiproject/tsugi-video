@@ -480,8 +480,8 @@ function list_jobs(array $options): array
     $query = trim((string) ($options['q'] ?? ''));
     if ($query !== '') {
         $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query) . '%';
-        $where[] = "(j.title LIKE ? ESCAPE '\\' COLLATE NOCASE OR j.original_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR EXISTS (SELECT 1 FROM placements s WHERE s.job_id = j.id AND (s.collection LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.logical_key LIKE ? ESCAPE '\\' COLLATE NOCASE)))";
-        array_push($params, $like, $like, $like, $like);
+        $where[] = "(j.id LIKE ? ESCAPE '\\' COLLATE NOCASE OR j.title LIKE ? ESCAPE '\\' COLLATE NOCASE OR j.original_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR EXISTS (SELECT 1 FROM placements s WHERE s.job_id = j.id AND (s.collection LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.logical_key LIKE ? ESCAPE '\\' COLLATE NOCASE)))";
+        array_push($params, $like, $like, $like, $like, $like);
     }
     $collection = trim((string) ($options['collection'] ?? ''));
     if ($collection !== '') {
@@ -781,6 +781,80 @@ function safe_import(string $given): string
         }
     }
     throw new InvalidArgumentException('Source must be within a configured import directory');
+}
+
+// Files sitting in the configured import folders. The dashboard lists these so an
+// admin can enqueue one without uploading it again. One level deep, newest first.
+function list_import_files(): array
+{
+    $files = [];
+    $seen = [];
+    foreach (cfg()['paths']['imports'] as $root) {
+        $prefix = realpath($root);
+        if ($prefix === false || !is_dir($prefix)) {
+            continue;
+        }
+        $handle = opendir($prefix);
+        if ($handle === false) {
+            continue;
+        }
+        while (($name = readdir($handle)) !== false) {
+            if ($name === '.' || $name === '..' || str_starts_with($name, '.')) {
+                continue;
+            }
+            $path = $prefix . '/' . $name;
+            if (!is_file($path) || !is_readable($path)) {
+                continue;
+            }
+            $real = realpath($path);
+            if ($real === false || !str_starts_with($real, $prefix . '/')) {
+                continue;
+            }
+            if (isset($seen[$real])) {
+                continue;
+            }
+            $seen[$real] = true;
+            $files[] = [
+                'path' => $real,
+                'name' => basename($real),
+                'bytes' => (int) (filesize($real) ?: 0),
+                'mtime' => (int) (filemtime($real) ?: 0),
+            ];
+        }
+        closedir($handle);
+    }
+    usort($files, function (array $a, array $b): int {
+        return $b['mtime'] <=> $a['mtime'] ?: strcmp($a['name'], $b['name']);
+    });
+    if (count($files) > 500) {
+        $files = array_slice($files, 0, 500);
+    }
+    $counts = [];
+    foreach ($files as $file) {
+        $counts[$file['name']] = ($counts[$file['name']] ?? 0) + 1;
+    }
+    foreach ($files as &$file) {
+        $shown = $counts[$file['name']] > 1
+            ? basename(dirname($file['path'])) . '/' . $file['name']
+            : $file['name'];
+        $file['label'] = $shown . ' (' . format_bytes($file['bytes']) . ')';
+        unset($file['mtime']);
+    }
+    unset($file);
+    return $files;
+}
+
+function format_bytes(int $bytes): string
+{
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $size = (float) max(0, $bytes);
+    $unit = 0;
+    while ($size >= 1024 && $unit < count($units) - 1) {
+        $size /= 1024;
+        $unit++;
+    }
+    $digits = $unit === 0 || $size >= 10 ? 0 : 1;
+    return number_format($size, $digits) . ' ' . $units[$unit];
 }
 
 function update_job(string $id, string $status, string $stage, float $percent, ?string $error = null): void
