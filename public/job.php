@@ -94,7 +94,7 @@ if ($seconds !== null && $seconds > 0) {
                         —
                     <?php else: ?>
                         <?php foreach ($placements as $slot): ?>
-                            <div class="nowrap"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?><?php if ($ready): ?> <a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e($slot['embed_url']) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button><?php endif; ?></div>
+                            <div class="nowrap"><?= e('(' . $slot['collection'] . ', ' . $slot['logical_key'] . ')') ?><?php if ($ready): ?> <a href="<?= e($slot['watch_url']) ?>" target="_blank" rel="noopener">Watch</a> · <a href="<?= e($slot['embed_url']) ?>" target="_blank" rel="noopener">Embed</a> / <button type="button" class="texty" data-copy="<?= e($slot['embed_url']) ?>">Copy embed</button><?php endif; ?></div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </td>
