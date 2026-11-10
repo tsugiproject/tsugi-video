@@ -22,6 +22,13 @@ async function refresh(){
 }
 const form=document.getElementById('upload');form.addEventListener('submit',async e=>{
  e.preventDefault();const output=document.getElementById('upload-status');output.textContent='Uploading…';
- try{const r=await fetch(api('/api/uploads'),{method:'POST',body:new FormData(form)});const data=await r.json();if(!r.ok)throw new Error(data.error||'Upload failed');output.textContent='Queued '+data.id;form.reset();refresh();}catch(err){output.textContent=err.message;}
+ try{
+  const r=await fetch(api('/api/uploads'),{method:'POST',body:new FormData(form)});
+  const text=await r.text();
+  let data;
+  try{data=JSON.parse(text);}catch{throw new Error((text||'Upload failed').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,240));}
+  if(!r.ok)throw new Error(data.error||'Upload failed');
+  output.textContent='Queued '+data.id;form.reset();refresh();
+ }catch(err){output.textContent=err.message;}
 });
 setInterval(refresh,5000);refresh();

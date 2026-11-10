@@ -21,7 +21,8 @@ $captions = is_file(rtrim(pathof('storage'), '/') . '/media/' . $id . '/captions
 
 header('Referrer-Policy: no-referrer');
 // frame-ancestors * lets other sites embed /embed/{id}. Scripts and media stay on this host.
-header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; img-src 'self' data:; frame-ancestors *;");
+// worker-src blob: is the hls.js demuxer worker. Inline handlers are not allowed.
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self'; media-src 'self' blob:; connect-src 'self'; img-src 'self' data:; frame-ancestors *;");
 ?>
 <!doctype html>
 <html lang="en">
@@ -33,22 +34,24 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-sr
 </head>
 <body class="player-page">
 <div class="player-wrap">
+    <div class="video-stage">
     <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" crossorigin="anonymous">
         <?php if ($captions): ?>
             <track kind="captions" src="<?= e(url_path('/media/' . $id . '/captions.vtt')) ?>" srclang="en" label="English" default>
         <?php endif; ?>
     </video>
+    </div>
     <?php if (!$embed): ?>
         <div class="player-info">
             <h1><?= e($job['title']) ?></h1>
             <p>Embed this video:</p>
-            <textarea readonly rows="3" onclick="this.select()">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . '/embed/' . $id) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
+            <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . '/embed/' . $id) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
             <p class="muted">HLS playback requires Safari or bundled hls.js for other browsers.</p>
         </div>
     <?php endif; ?>
     <div id="play-error" class="muted"></div>
 </div>
 <script src="<?= e(url_path('/assets/hls.min.js')) ?>"></script>
-<script src="<?= e(url_path('/assets/player.js')) ?>"></script>
+<script src="<?= e(url_path('/assets/player.js') . '?v=' . filemtime(__DIR__ . '/assets/player.js')) ?>"></script>
 </body>
 </html>

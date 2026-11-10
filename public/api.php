@@ -73,5 +73,5 @@ try {
     fail($error->getMessage(), 400);
 } catch (Throwable $error) {
     error_log($error);
-    fail('Server error', 500);
+    fail($error->getMessage(), 500);
 }
