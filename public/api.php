@@ -10,14 +10,18 @@ $path = preg_replace('~^/api~', '', request_path());
 
 try {
     if ($method === 'GET' && $path === '/jobs') {
-        $page = list_jobs([
-            'limit' => array_key_exists('limit', $_GET) ? $_GET['limit'] : 200,
-            'offset' => $_GET['offset'] ?? 0,
-            'q' => $_GET['q'] ?? '',
-            'collection' => $_GET['collection'] ?? '',
-            'sort' => $_GET['sort'] ?? 'created',
-            'dir' => $_GET['dir'] ?? 'desc',
-        ]);
+        if (($_GET['queue'] ?? '') === '1') {
+            $page = dashboard_jobs();
+        } else {
+            $page = list_jobs([
+                'limit' => array_key_exists('limit', $_GET) ? $_GET['limit'] : 200,
+                'offset' => $_GET['offset'] ?? 0,
+                'q' => $_GET['q'] ?? '',
+                'collection' => $_GET['collection'] ?? '',
+                'sort' => $_GET['sort'] ?? 'created',
+                'dir' => $_GET['dir'] ?? 'desc',
+            ]);
+        }
         json_out([
             'jobs' => array_map('public_job', $page['jobs']),
             'total' => $page['total'],

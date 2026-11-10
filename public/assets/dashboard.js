@@ -102,9 +102,6 @@ suggest(document.querySelector('[name=logical_key]'),async q=>{
  const data=await r.json();
  return data.keys||[];
 });
-let jobLimit=10;
-const jobsMore=document.getElementById('jobs-more');
-jobsMore.addEventListener('click',()=>{jobLimit+=10;refresh();});
 const incoming=document.getElementById('incoming');
 const enqueue=document.getElementById('enqueue');
 let incomingSig='';
@@ -140,7 +137,7 @@ async function refreshIncoming(){
 async function refresh(){
  refreshIncoming();
  try{
-  const r=await fetch(api('/api/jobs?limit='+jobLimit+'&offset=0&sort=created&dir=desc'),{cache:'no-store'}); if(!r.ok)return;
+  const r=await fetch(api('/api/jobs?queue=1'),{cache:'no-store'}); if(!r.ok)return;
   const data=await r.json();
   const jobs=data.jobs||[];
   const counts=data.counts||{};
@@ -159,7 +156,6 @@ async function refresh(){
    if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;d.append(del);}
    tr.append(a,b,c,whenCell,d);tbody.append(tr);
   }
-  jobsMore.hidden=jobs.length>=(data.total||0);
  }catch(e){console.warn('Could not refresh status',e)}
 }
 const form=document.getElementById('upload');

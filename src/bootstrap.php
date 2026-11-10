@@ -772,6 +772,24 @@ function list_jobs(array $options): array
     ];
 }
 
+// The dashboard queue: everything still in progress, oldest first, then the one
+// video that finished most recently. The library has the rest.
+function dashboard_jobs(): array
+{
+    $active = db()->query("SELECT * FROM jobs WHERE status != 'completed' ORDER BY created_at ASC, id ASC")->fetchAll();
+    $finished = db()->query("SELECT * FROM jobs WHERE status = 'completed' ORDER BY finished_at DESC, created_at DESC, id DESC LIMIT 1")->fetch();
+    $jobs = $active;
+    if ($finished) {
+        $jobs[] = $finished;
+    }
+    return [
+        'jobs' => $jobs,
+        'total' => count($jobs),
+        'limit' => count($jobs),
+        'offset' => 0,
+    ];
+}
+
 function list_collections(): array
 {
     $statement = db()->query('SELECT collection FROM placements GROUP BY collection COLLATE NOCASE ORDER BY collection');

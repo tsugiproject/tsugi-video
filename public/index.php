@@ -5,9 +5,8 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 admin_auth();
 
-$recent = list_jobs(['limit' => 10, 'offset' => 0, 'sort' => 'created', 'dir' => 'desc']);
-$jobs = $recent['jobs'];
-$jobTotal = $recent['total'];
+$queue = dashboard_jobs();
+$jobs = $queue['jobs'];
 $counts = job_counts();
 $incoming = list_import_files();
 ?>
@@ -74,7 +73,7 @@ $incoming = list_import_files();
     </section>
 
     <section>
-        <h2>Jobs <small class="muted">refreshes every 5 seconds</small></h2>
+        <h2>Jobs <small class="muted">oldest first, plus the latest finished video · refreshes every 5 seconds</small></h2>
         <table>
             <thead>
                 <tr><th>Title</th><th>Stage</th><th>Progress</th><th>When</th><th>Actions</th></tr>
@@ -112,7 +111,6 @@ $incoming = list_import_files();
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="pager"><button type="button" class="texty" id="jobs-more"<?= $jobTotal > count($jobs) ? '' : ' hidden' ?>>More</button></p>
     </section>
 </main>
 <script>window.VIDEO_BASE=<?= json_encode(base_path(), JSON_UNESCAPED_SLASHES) ?>;</script>
