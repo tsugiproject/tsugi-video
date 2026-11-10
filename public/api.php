@@ -123,6 +123,14 @@ try {
         json_out(public_job(job_by_id($matches[1])));
     }
 
+    // Start one worker and return. A worker that is already running exits on the lock.
+    if ($method === 'POST' && $path === '/worker/poke') {
+        check_csrf();
+        $queued = (int) db()->query("SELECT COUNT(*) FROM jobs WHERE status='queued'")->fetchColumn();
+        start_worker();
+        json_out(['poked' => true, 'queued' => $queued]);
+    }
+
     fail('Unknown endpoint', 404);
 } catch (ConflictException $error) {
     fail($error->getMessage(), 409);

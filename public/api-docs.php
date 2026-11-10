@@ -31,7 +31,7 @@ $base = rtrim(cfg()['base_url'], '/');
 
     <section>
         <p>Every <code>/api/</code> call needs the admin user and password, or a Bearer token from <code>config.php</code>. These examples use the token. curl and Python do not send an Origin header, which is what the write check expects. A browser on another site cannot call the write endpoints with the admin password.</p>
-        <p>The API only queues work. Run <code>php bin/worker.php</code> to process one queued video. The same file uploaded again is the same job. A new file uploaded with an existing collection and logical key becomes the video at that key.</p>
+        <p>The API queues work. An upload, a retry, and <code>POST /api/worker/poke</code> each start one worker. Cron remains the backstop. The same file uploaded again is the same job. A new file uploaded with an existing collection and logical key becomes the video at that key.</p>
         <nav>
             <a href="#setup">Setup</a>
             <a href="#list">List</a>
@@ -42,6 +42,7 @@ $base = rtrim(cfg()['base_url'], '/');
             <a href="#catalog">Collections</a>
             <a href="#log">Log</a>
             <a href="#retry">Retry</a>
+            <a href="#poke">Poke</a>
             <a href="#delete">Delete</a>
             <a href="#play">Watch</a>
         </nav>
@@ -249,6 +250,22 @@ $base = rtrim(cfg()['base_url'], '/');
             SH,
             <<<'PY'
             job = call("POST", "/api/jobs/" + job_id + "/retry", b"{}", "application/json")
+            PY
+        ); ?>
+    </section>
+
+    <section id="poke">
+        <h2>Poke the worker</h2>
+        <p><code>POST /api/worker/poke</code> starts one worker and returns immediately. If a worker is already running, the new process sees the lock and exits. If the queue is empty, it exits after reporting that. Send a JSON content type. <code>queued</code> is how many jobs were waiting at the moment of the poke.</p>
+        <?php example(
+            <<<'SH'
+            curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{}' \
+              "$BASE/api/worker/poke"
+            SH,
+            <<<'PY'
+            print(call("POST", "/api/worker/poke", b"{}", "application/json"))
             PY
         ); ?>
     </section>
