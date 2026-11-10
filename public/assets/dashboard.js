@@ -17,13 +17,24 @@ function datesCell(j){
  return td;
 }
 document.querySelectorAll('time[data-utc]').forEach(el=>{el.textContent=when(el.dataset.utc);});
+function copyEmbedButton(url){
+ const button=document.createElement('button');
+ button.type='button';
+ button.className='copy';
+ button.dataset.copy=url;
+ button.title='Copy embed link';
+ button.setAttribute('aria-label','Copy embed link');
+ button.innerHTML='<svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg>';
+ return button;
+}
 function slotLines(td, job){
  for(const slot of job.placements||[]){
   const small=document.createElement('small');
+  small.className='nowrap';
   const link=document.createElement('a');
   link.href=slot.watch_url;link.target='_blank';link.rel='noopener';
   link.textContent=slot.collection+' / '+slot.logical_key;
-  small.append(link);td.append(small);
+  small.append(link, copyEmbedButton(slot.embed_url));td.append(small);
  }
 }
 function suggest(input, source){
@@ -92,7 +103,7 @@ async function refresh(){
    const c=document.createElement('td');c.textContent=j.progress.toFixed(1)+'%';const bar=document.createElement('div');bar.className='progress';const fill=document.createElement('span');fill.style.width=j.progress+'%';bar.append(fill);c.append(bar);
    const whenCell=datesCell(j);
    const d=document.createElement('td');
-   if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';d.append(embed,' · ');}
+   if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));d.append(pair,' · ');}
    if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry,' ');}
    const log=document.createElement('a');log.href=api('/api/jobs/'+j.id+'/log');log.target='_blank';log.rel='noopener';log.textContent='Log';d.append(log);
    if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.title;d.append(del);}
@@ -119,6 +130,24 @@ form.addEventListener('submit',async e=>{
  }catch(err){output.textContent=err.message;}
 });
 document.getElementById('jobs').addEventListener('click', async (event) => {
+  const copy = event.target.closest('button[data-copy]');
+  if (copy) {
+    try {
+      await navigator.clipboard.writeText(copy.dataset.copy);
+      copy.classList.add('copied');
+      copy.title = 'Copied';
+      copy.setAttribute('aria-label', 'Copied');
+      setTimeout(() => {
+        copy.classList.remove('copied');
+        copy.title = 'Copy embed link';
+        copy.setAttribute('aria-label', 'Copy embed link');
+      }, 1200);
+    } catch (err) {
+      copy.title = 'Copy failed';
+      setTimeout(() => { copy.title = 'Copy embed link'; }, 1200);
+    }
+    return;
+  }
   const button = event.target.closest('button[data-delete]');
   if (!button) return;
   const title = button.dataset.title || 'this video';

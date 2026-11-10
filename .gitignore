@@ -3,3 +3,4 @@
 /models/
 /public/assets/hls.min.js
 .DS_Store
+*.swp
