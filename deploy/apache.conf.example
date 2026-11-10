@@ -1,4 +1,9 @@
 # Adjust paths and hostname before enabling this vhost.
+# sudo cp deploy/apache.conf.example /etc/apache2/sites-available/video.tsugi.org.conf
+# sudo apachectl configtest
+# sudo a2ensite video.tsugi.org
+# sudo apachectl configtest
+# sudo apachectl graceful
 <VirtualHost *:80>
     ServerName video.tsugi.org
     DocumentRoot /var/www/video-server/public
