@@ -14,12 +14,26 @@ try {
         json_out(['jobs' => array_map('public_job', $rows)]);
     }
 
-    if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{24})$~', $path, $matches)) {
+    if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{64})$~', $path, $matches)) {
         $job = job_by_id($matches[1]);
         if (!$job) {
             fail('Not found', 404);
         }
         json_out(public_job($job));
+    }
+
+    if ($method === 'GET' && preg_match('~^/jobs/([a-f0-9]{64})/log$~', $path, $matches)) {
+        if (!job_by_id($matches[1])) {
+            fail('Not found', 404);
+        }
+        $log = job_log_path($matches[1]);
+        if (!is_file($log)) {
+            fail('No log yet', 404);
+        }
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Cache-Control: no-store');
+        readfile($log);
+        exit;
     }
 
     // Copy a file that is already on the server, under paths.imports.
@@ -53,8 +67,22 @@ try {
         json_out(public_job($job), 201);
     }
 
+    // Drop the files and the queue row. A running worker still owns a processing job.
+    if ($method === 'DELETE' && preg_match('~^/jobs/([a-f0-9]{64})$~', $path, $matches)) {
+        check_csrf();
+        $job = job_by_id($matches[1]);
+        if (!$job) {
+            fail('Not found', 404);
+        }
+        if ($job['status'] === 'processing') {
+            fail('Cannot delete a job while it is processing', 409);
+        }
+        delete_job($job);
+        json_out(['deleted' => $matches[1]]);
+    }
+
     // Retry reruns the whole job. Jobs left in "processing" are not retried here.
-    if ($method === 'POST' && preg_match('~^/jobs/([a-f0-9]{24})/retry$~', $path, $matches)) {
+    if ($method === 'POST' && preg_match('~^/jobs/([a-f0-9]{64})/retry$~', $path, $matches)) {
         check_csrf();
         $job = job_by_id($matches[1]);
         if (!$job) {
@@ -69,6 +97,8 @@ try {
     }
 
     fail('Unknown endpoint', 404);
+} catch (ConflictException $error) {
+    fail($error->getMessage(), 409);
 } catch (InvalidArgumentException $error) {
     fail($error->getMessage(), 400);
 } catch (Throwable $error) {

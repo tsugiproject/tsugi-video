@@ -19,7 +19,7 @@ foreach ($counts as $name => $_) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Video Server · Dashboard</title>
-    <link rel="stylesheet" href="<?= e(url_path('/assets/style.css')) ?>">
+    <link rel="stylesheet" href="<?= e(url_path('/assets/style.css')) ?>?v=<?= (int) filemtime(__DIR__ . '/assets/style.css') ?>">
 </head>
 <body>
 <main>
@@ -52,19 +52,30 @@ foreach ($counts as $name => $_) {
         <h2>Jobs <small class="muted">refreshes every 5 seconds</small></h2>
         <table>
             <thead>
-                <tr><th>Title</th><th>Stage</th><th>Progress</th><th>Actions</th></tr>
+                <tr><th>Title</th><th>Stage</th><th>Progress</th><th>When</th><th>Actions</th></tr>
             </thead>
             <tbody id="jobs">
                 <?php foreach ($jobs as $job): ?>
                     <tr>
                         <td><?= e($job['title']) ?><small><?= e($job['original_name']) ?></small></td>
-                        <td><?= e($job['status'] . ' / ' . $job['stage']) ?></td>
+                        <td><?= e($job['status'] . ' / ' . $job['stage']) ?><?php $line = job_log_tail($job['id']); if ($line): ?><small class="log-line"><?= e($line) ?></small><?php endif; ?></td>
                         <td><?= round((float) $job['progress']) ?>%</td>
+                        <td class="dates">
+                            <small>Uploaded <time data-utc="<?= e((string) $job['created_at']) ?>"><?= e((string) $job['created_at']) ?></time></small>
+                            <small>Started <time data-utc="<?= e((string) ($job['started_at'] ?? '')) ?>"><?= e($job['started_at'] ?: '—') ?></time></small>
+                            <small>Ended <time data-utc="<?= e((string) ($job['finished_at'] ?? '')) ?>"><?= e($job['finished_at'] ?: '—') ?></time></small>
+                        </td>
                         <td>
                             <?php if ($job['status'] === 'completed'): ?>
-                                <a href="<?= e(url_path('/watch/' . $job['id'])) ?>">Watch</a>
+                                <a href="<?= e(url_path('/watch/' . $job['id'])) ?>" target="_blank" rel="noopener">Watch</a>
                                 ·
-                                <a href="<?= e(url_path('/embed/' . $job['id'])) ?>">Embed</a>
+                                <a href="<?= e(url_path('/embed/' . $job['id'])) ?>" target="_blank" rel="noopener">Embed</a>
+                                ·
+                            <?php endif; ?>
+                            <a href="<?= e(url_path('/api/jobs/' . $job['id'] . '/log')) ?>" target="_blank" rel="noopener">Log</a>
+                            <?php if ($job['status'] !== 'processing'): ?>
+                                ·
+                                <button type="button" data-delete="<?= e($job['id']) ?>" data-title="<?= e($job['title']) ?>">Delete</button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -74,6 +85,6 @@ foreach ($counts as $name => $_) {
     </section>
 </main>
 <script>window.VIDEO_BASE=<?= json_encode(base_path(), JSON_UNESCAPED_SLASHES) ?>;</script>
-<script src="<?= e(url_path('/assets/dashboard.js')) ?>"></script>
+<script src="<?= e(url_path('/assets/dashboard.js')) ?>?v=<?= (int) filemtime(__DIR__ . '/assets/dashboard.js') ?>"></script>
 </body>
 </html>

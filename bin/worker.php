@@ -11,7 +11,9 @@ set_time_limit(0);
 function logmsg(string $message): void
 {
     global $log, $id;
-    file_put_contents($log, gmdate('c') . ' ' . $message . "\n", FILE_APPEND);
+    if ($log !== '') {
+        file_put_contents($log, gmdate('c') . ' ' . $message . "\n", FILE_APPEND);
+    }
     echo "$id: $message\n";
 }
 
@@ -24,6 +26,10 @@ function command_run(array $args, ?callable $progress = null): void
         1 => ['pipe', 'w'],
         2 => ['file', $log, 'a'],
     ];
+    logmsg('Running: ' . implode(' ', array_map(
+        static fn (string $arg): string => preg_match('/\s/', $arg) ? escapeshellarg($arg) : $arg,
+        $args
+    )));
     $process = proc_open($args, $spec, $pipes, null, null, ['bypass_shell' => true]);
     if (!is_resource($process)) {
         throw new RuntimeException('Could not launch ' . ($args[0] ?? 'command'));
@@ -119,16 +125,20 @@ try {
 }
 
 $id = $job['id'];
-$root = rtrim(pathof('storage'), '/');
-$work = $root . '/work/' . $id;
-$final = $root . '/media/' . $id;
-if (!is_dir($work)) {
-    mkdir($work, 0770, true);
-}
-$log = $work . '/worker.log';
+$log = '';
 
 try {
-    logmsg('Starting: ' . $job['original_name']);
+    $work = content_dir('work', $id);
+    $final = content_dir('media', $id);
+    // A leftover staging directory is from a crashed run. The published tree stays until publish_staged().
+    if (is_dir($work)) {
+        remove_tree(realpath($work));
+    }
+    if (!is_dir($work) && !mkdir($work, 0770, true)) {
+        throw new RuntimeException('Could not create staging directory');
+    }
+    $log = job_log_path($id);
+    logmsg('--- run started: ' . $job['original_name'] . ' ---');
     $probe = probe($job['source_path']);
     $duration = (float) ($probe['format']['duration'] ?? 0);
     if ($duration <= 0) {
@@ -234,19 +244,16 @@ try {
     require_media_mount();
     update_job($id, 'processing', 'publish', 98);
 
-    // Apache only exposes /media. Incomplete files stay in /work until this rename.
-    if (file_exists($final)) {
-        throw new RuntimeException('Published directory already exists; intervention required');
-    }
-    if (!rename($work, $final)) {
-        throw new RuntimeException('Atomic publish rename failed (ensure work/media share a filesystem)');
-    }
+    // Apache only exposes /media. The finished staging tree is renamed into place on this volume.
+    publish_staged($work, $final);
 
     $statement = db()->prepare("UPDATE jobs SET status='completed', stage='completed', progress=100, finished_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?");
     $statement->execute([$id]);
+    logmsg('Completed');
     echo "Completed $id\n";
 } catch (Throwable $error) {
     logmsg('ERROR: ' . $error->getMessage());
     update_job($id, 'failed', 'failed', (float) (job_by_id($id)['progress'] ?? 0), $error->getMessage());
+    db()->prepare('UPDATE jobs SET finished_at=CURRENT_TIMESTAMP WHERE id=?')->execute([$id]);
     exit(1);
 }

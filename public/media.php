@@ -7,12 +7,12 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 $id = $_GET['id'] ?? '';
 $file = $_GET['file'] ?? '';
 $allowedFile = preg_match('/^(index\\.m3u8|segment[0-9]{5}\\.ts|captions\\.vtt)$/', $file);
-if (!preg_match('/^[a-f0-9]{24}$/', $id) || !$allowedFile) {
+if (!is_content_id($id) || !$allowedFile) {
     http_response_code(404);
     exit('Not found');
 }
 
-$path = rtrim(pathof('storage'), '/') . '/media/' . $id . '/' . $file;
+$path = content_dir('media', $id) . '/' . $file;
 if (!is_file($path)) {
     http_response_code(404);
     exit('Not found');

@@ -4,7 +4,7 @@
 require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 $id = $_GET['id'] ?? '';
-if (!preg_match('/^[a-f0-9]{24}$/', $id)) {
+if (!is_content_id($id)) {
     http_response_code(404);
     exit('Not found');
 }
@@ -16,8 +16,8 @@ if (!$job || $job['status'] !== 'completed') {
 }
 
 $embed = ($_GET['embed'] ?? '') === '1';
-$hls = url_path('/media/' . $id . '/index.m3u8');
-$captions = is_file(rtrim(pathof('storage'), '/') . '/media/' . $id . '/captions.vtt');
+$hls = url_path(media_public_path($id) . '/index.m3u8');
+$captions = is_file(content_dir('media', $id) . '/captions.vtt');
 
 header('Referrer-Policy: no-referrer');
 // frame-ancestors * lets other sites embed /embed/{id}. Scripts and media stay on this host.
@@ -37,7 +37,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
     <div class="video-stage">
     <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" crossorigin="anonymous">
         <?php if ($captions): ?>
-            <track kind="captions" src="<?= e(url_path('/media/' . $id . '/captions.vtt')) ?>" srclang="en" label="English" default>
+            <track kind="captions" src="<?= e(url_path(media_public_path($id) . '/captions.vtt')) ?>" srclang="en" label="English" default>
         <?php endif; ?>
     </video>
     </div>
