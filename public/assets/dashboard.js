@@ -88,29 +88,105 @@ suggest(document.querySelector('[name=logical_key]'),async q=>{
  const data=await r.json();
  return data.keys||[];
 });
+let jobLimit=10;
+const jobsMore=document.getElementById('jobs-more');
+jobsMore.addEventListener('click',()=>{jobLimit+=10;refresh();});
 async function refresh(){
  try{
-  const r=await fetch(api('/api/jobs'),{cache:'no-store'}); if(!r.ok)return;
-  const {jobs}=await r.json();
-  const counts={queued:0,processing:0,completed:0,failed:0};
-  for(const j of jobs)counts[j.status]=(counts[j.status]||0)+1;
+  const r=await fetch(api('/api/jobs?limit='+jobLimit+'&offset=0&sort=created&dir=desc'),{cache:'no-store'}); if(!r.ok)return;
+  const data=await r.json();
+  const jobs=data.jobs||[];
+  const counts=data.counts||{};
   for(const [key,n] of Object.entries(counts)){const el=document.getElementById('count-'+key);if(el)el.textContent=n;}
   const tbody=document.getElementById('jobs');tbody.replaceChildren();
   for(const j of jobs){
    const tr=document.createElement('tr');
-   const a=document.createElement('td');a.textContent=j.title;const small=document.createElement('small');small.textContent=j.original_name;a.append(small);const sha=document.createElement('small');sha.className='sha';sha.textContent=j.id;a.append(sha);slotLines(a,j);
+   const a=document.createElement('td');a.textContent=j.display_title||j.title;const small=document.createElement('small');small.textContent=j.original_name;a.append(small);const sha=document.createElement('small');sha.className='sha';sha.textContent=j.id;a.append(sha);slotLines(a,j);
    const b=document.createElement('td');b.textContent=j.status+' / '+j.stage;if(j.log_line){const line=document.createElement('small');line.className='log-line';line.textContent=j.log_line;b.append(line);}
    const c=document.createElement('td');c.textContent=j.progress.toFixed(1)+'%';const bar=document.createElement('div');bar.className='progress';const fill=document.createElement('span');fill.style.width=j.progress+'%';bar.append(fill);c.append(bar);
    const whenCell=datesCell(j);
    const d=document.createElement('td');
    if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));d.append(pair,' · ');}
-   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry,' ');}
+   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh();loadLibrary();};d.append(retry,' ');}
    const log=document.createElement('a');log.href=api('/api/jobs/'+j.id+'/log');log.target='_blank';log.rel='noopener';log.textContent='Log';d.append(log);
-   if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.title;d.append(del);}
+   if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;d.append(del);}
    tr.append(a,b,c,whenCell,d);tbody.append(tr);
   }
+  jobsMore.hidden=jobs.length>=(data.total||0);
  }catch(e){console.warn('Could not refresh status',e)}
 }
+const libraryPageSize=20;
+let libraryPage=0;
+const libraryCollection=document.getElementById('library-collection');
+const librarySearch=document.getElementById('library-search');
+const librarySort=document.getElementById('library-sort');
+let libraryNames='';
+async function loadCollections(){
+ const r=await fetch(api('/api/collections'),{cache:'no-store'});
+ if(!r.ok)return;
+ const data=await r.json();
+ const names=(data.collections||[]).join('\n');
+ if(names===libraryNames)return;
+ libraryNames=names;
+ const selected=libraryCollection.value;
+ libraryCollection.replaceChildren(new Option('All videos',''));
+ for(const name of data.collections||[]) libraryCollection.append(new Option(name,name));
+ if([...(libraryCollection.options)].some(option=>option.value===selected)) libraryCollection.value=selected;
+}
+async function loadLibrary(){
+ try{
+  await loadCollections();
+  const [sort,dir]=(librarySort.value||'title:asc').split(':');
+  const params=new URLSearchParams({limit:String(libraryPageSize),offset:String(libraryPage*libraryPageSize),sort,dir,q:librarySearch.value.trim(),collection:libraryCollection.value});
+  const r=await fetch(api('/api/jobs?'+params),{cache:'no-store'});
+  if(!r.ok)return;
+  const data=await r.json();
+  const jobs=data.jobs||[];
+  const total=data.total||0;
+  const tbody=document.getElementById('library');
+  tbody.replaceChildren();
+  if(!jobs.length && libraryPage>0 && total>0){libraryPage=Math.max(0,Math.ceil(total/libraryPageSize)-1);return loadLibrary();}
+  if(!jobs.length){
+   const tr=document.createElement('tr');
+   const td=document.createElement('td');
+   td.colSpan=4;td.className='muted';td.textContent='No videos';
+   tr.append(td);tbody.append(tr);
+  }
+  for(const j of jobs){
+   const tr=document.createElement('tr');
+   const title=document.createElement('td');
+   title.textContent=j.display_title||j.title;
+   if((j.display_title||j.title)!==j.original_name){const small=document.createElement('small');small.textContent=j.original_name;title.append(small);}
+   const where=document.createElement('td');
+   if(!(j.placements||[]).length) where.textContent='—';
+   else slotLines(where,j);
+   const status=document.createElement('td');status.textContent=j.status;
+   const actions=document.createElement('td');
+   if(j.status==='completed'){
+    const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';
+    const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';
+    const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));
+    actions.append(watch,' · ',pair,' · ');
+   }
+   const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;
+   if(j.status==='processing') del.disabled=true;
+   actions.append(del);
+   tr.append(title,where,status,actions);tbody.append(tr);
+  }
+  const start=total?libraryPage*libraryPageSize+1:0;
+  const end=Math.min(total,start+jobs.length-1);
+  document.getElementById('library-page').textContent=total?start+'–'+end+' of '+total:'0 videos';
+  document.getElementById('library-prev').disabled=libraryPage<=0;
+  document.getElementById('library-next').disabled=(libraryPage+1)*libraryPageSize>=total;
+ }catch(e){console.warn('Could not load library',e)}
+}
+let libraryTimer=null;
+function libraryChanged(){libraryPage=0;loadLibrary();}
+libraryCollection.addEventListener('change',libraryChanged);
+librarySort.addEventListener('change',libraryChanged);
+librarySearch.addEventListener('input',()=>{clearTimeout(libraryTimer);libraryTimer=setTimeout(libraryChanged,200);});
+document.getElementById('library-prev').addEventListener('click',()=>{if(libraryPage>0){libraryPage-=1;loadLibrary();}});
+document.getElementById('library-next').addEventListener('click',()=>{libraryPage+=1;loadLibrary();});
 const form=document.getElementById('upload');
 const fileInput=form.querySelector('input[type=file]');
 const fileName=document.getElementById('file-name');
@@ -126,10 +202,10 @@ form.addEventListener('submit',async e=>{
   const slot=(data.placements||[])[0];
   const where=slot?slot.collection+'/'+slot.logical_key+' ':'';
   output.textContent=(data.status==='completed'?'Already available ':data.status==='queued'?'Queued ':'Saved ')+where+data.id;
-  form.reset();fileName.textContent='No file chosen';refresh();
+  form.reset();fileName.textContent='No file chosen';refresh();loadLibrary();
  }catch(err){output.textContent=err.message;}
 });
-document.getElementById('jobs').addEventListener('click', async (event) => {
+document.querySelector('main').addEventListener('click', async (event) => {
   const copy = event.target.closest('button[data-copy]');
   if (copy) {
     try {
@@ -160,9 +236,10 @@ document.getElementById('jobs').addEventListener('click', async (event) => {
     try { data = JSON.parse(text); } catch { throw new Error((text || 'Delete failed').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240)); }
     if (!r.ok) throw new Error(data.error || 'Delete failed');
     refresh();
+    loadLibrary();
   } catch (err) {
     button.disabled = false;
     alert(err.message);
   }
 });
-setInterval(refresh,5000);refresh();
+setInterval(refresh,5000);refresh();loadLibrary();

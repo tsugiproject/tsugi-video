@@ -306,6 +306,7 @@ function public_job(array $job): array
     return [
         'id' => $job['id'],
         'title' => $job['title'],
+        'display_title' => display_title($job),
         'original_name' => $job['original_name'],
         'status' => $job['status'],
         'stage' => $job['stage'],
@@ -440,6 +441,67 @@ function job_placements(string $id): array
         ];
     }
     return $rows;
+}
+
+function job_counts(): array
+{
+    $counts = ['queued' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0];
+    foreach ($counts as $name => $_) {
+        $statement = db()->prepare('SELECT COUNT(*) FROM jobs WHERE status=?');
+        $statement->execute([$name]);
+        $counts[$name] = (int) $statement->fetchColumn();
+    }
+    return $counts;
+}
+
+// Title for people. A blank title falls back to the original filename.
+function display_title(array $job): string
+{
+    $title = trim((string) ($job['title'] ?? ''));
+    return $title !== '' ? $title : (string) $job['original_name'];
+}
+
+// Newest-first queue, or a searchable library page. Sort and direction are a fixed list.
+function list_jobs(array $options): array
+{
+    $limit = max(1, min(200, (int) ($options['limit'] ?? 200)));
+    $offset = max(0, (int) ($options['offset'] ?? 0));
+    $sort = (string) ($options['sort'] ?? 'created');
+    $direction = strtolower((string) ($options['dir'] ?? 'desc')) === 'asc' ? 'ASC' : 'DESC';
+    $order = [
+        'title' => "CASE WHEN TRIM(j.title) = '' THEN j.original_name ELSE j.title END COLLATE NOCASE",
+        'status' => 'j.status',
+        'collection' => "(SELECT MIN(collection) FROM placements WHERE job_id = j.id) COLLATE NOCASE",
+        'created' => 'j.created_at',
+    ][$sort] ?? 'j.created_at';
+
+    $where = [];
+    $params = [];
+    $query = trim((string) ($options['q'] ?? ''));
+    if ($query !== '') {
+        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query) . '%';
+        $where[] = "(j.title LIKE ? ESCAPE '\\' COLLATE NOCASE OR j.original_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR EXISTS (SELECT 1 FROM placements s WHERE s.job_id = j.id AND (s.collection LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.logical_key LIKE ? ESCAPE '\\' COLLATE NOCASE)))";
+        array_push($params, $like, $like, $like, $like);
+    }
+    $collection = trim((string) ($options['collection'] ?? ''));
+    if ($collection !== '') {
+        $where[] = 'EXISTS (SELECT 1 FROM placements c WHERE c.job_id = j.id AND c.collection = ? COLLATE NOCASE)';
+        $params[] = $collection;
+    }
+    $sqlWhere = $where === [] ? '' : 'WHERE ' . implode(' AND ', $where);
+
+    $count = db()->prepare("SELECT COUNT(*) FROM jobs j $sqlWhere");
+    $count->execute($params);
+    $total = (int) $count->fetchColumn();
+
+    $statement = db()->prepare("SELECT j.* FROM jobs j $sqlWhere ORDER BY $order $direction, j.created_at DESC, j.id LIMIT $limit OFFSET $offset");
+    $statement->execute($params);
+    return [
+        'jobs' => $statement->fetchAll(),
+        'total' => $total,
+        'limit' => $limit,
+        'offset' => $offset,
+    ];
 }
 
 function list_collections(): array

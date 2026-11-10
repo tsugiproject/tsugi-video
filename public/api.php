@@ -10,8 +10,21 @@ $path = preg_replace('~^/api~', '', request_path());
 
 try {
     if ($method === 'GET' && $path === '/jobs') {
-        $rows = db()->query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200')->fetchAll();
-        json_out(['jobs' => array_map('public_job', $rows)]);
+        $page = list_jobs([
+            'limit' => array_key_exists('limit', $_GET) ? $_GET['limit'] : 200,
+            'offset' => $_GET['offset'] ?? 0,
+            'q' => $_GET['q'] ?? '',
+            'collection' => $_GET['collection'] ?? '',
+            'sort' => $_GET['sort'] ?? 'created',
+            'dir' => $_GET['dir'] ?? 'desc',
+        ]);
+        json_out([
+            'jobs' => array_map('public_job', $page['jobs']),
+            'total' => $page['total'],
+            'limit' => $page['limit'],
+            'offset' => $page['offset'],
+            'counts' => job_counts(),
+        ]);
     }
 
     if ($method === 'GET' && $path === '/collections' && !array_key_exists('q', $_GET)) {

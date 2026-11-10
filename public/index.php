@@ -5,13 +5,10 @@ require_once dirname(__DIR__) . '/src/bootstrap.php';
 
 admin_auth();
 
-$jobs = db()->query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200')->fetchAll();
-$counts = ['queued' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0];
-foreach ($counts as $name => $_) {
-    $statement = db()->prepare('SELECT COUNT(*) FROM jobs WHERE status=?');
-    $statement->execute([$name]);
-    $counts[$name] = (int) $statement->fetchColumn();
-}
+$recent = list_jobs(['limit' => 10, 'offset' => 0, 'sort' => 'created', 'dir' => 'desc']);
+$jobs = $recent['jobs'];
+$jobTotal = $recent['total'];
+$counts = job_counts();
 ?>
 <!doctype html>
 <html lang="en">
@@ -76,7 +73,7 @@ foreach ($counts as $name => $_) {
             <tbody id="jobs">
                 <?php foreach ($jobs as $job): ?>
                     <tr>
-                        <td><?= e($job['title']) ?><small><?= e($job['original_name']) ?></small><small class="sha"><?= e($job['id']) ?></small><?php foreach (job_placements($job['id']) as $slot): ?><small class="nowrap"><a href="<?= e(url_path('/watch/' . rawurlencode($slot['collection']) . '/' . rawurlencode($slot['logical_key']))) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a><button type="button" class="copy" data-copy="<?= e($slot['embed_url']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></small><?php endforeach; ?></td>
+                        <td><?= e(display_title($job)) ?><small><?= e($job['original_name']) ?></small><small class="sha"><?= e($job['id']) ?></small><?php foreach (job_placements($job['id']) as $slot): ?><small class="nowrap"><a href="<?= e(url_path('/watch/' . rawurlencode($slot['collection']) . '/' . rawurlencode($slot['logical_key']))) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a><button type="button" class="copy" data-copy="<?= e($slot['embed_url']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></small><?php endforeach; ?></td>
                         <td><?= e($job['status'] . ' / ' . $job['stage']) ?><?php $line = job_log_tail($job['id']); if ($line): ?><small class="log-line"><?= e($line) ?></small><?php endif; ?></td>
                         <td><?= round((float) $job['progress']) ?>%</td>
                         <td class="dates">
@@ -94,13 +91,48 @@ foreach ($counts as $name => $_) {
                             <a href="<?= e(url_path('/api/jobs/' . $job['id'] . '/log')) ?>" target="_blank" rel="noopener">Log</a>
                             <?php if ($job['status'] !== 'processing'): ?>
                                 ·
-                                <button type="button" data-delete="<?= e($job['id']) ?>" data-title="<?= e($job['title']) ?>">Delete</button>
+                                <button type="button" data-delete="<?= e($job['id']) ?>" data-title="<?= e(display_title($job)) ?>">Delete</button>
                             <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <p class="pager"><button type="button" class="texty" id="jobs-more"<?= $jobTotal > count($jobs) ? '' : ' hidden' ?>>More</button></p>
+    </section>
+
+    <section id="library-section">
+        <h2>Library</h2>
+        <div class="form-row library-tools">
+            <label>Collection
+                <select id="library-collection">
+                    <option value="">All videos</option>
+                </select>
+            </label>
+            <label>Search
+                <input id="library-search" type="search" placeholder="Title, file, or key">
+            </label>
+            <label>Sort
+                <select id="library-sort">
+                    <option value="title:asc">Title</option>
+                    <option value="title:desc">Title, reverse</option>
+                    <option value="created:desc">Newest</option>
+                    <option value="created:asc">Oldest</option>
+                    <option value="collection:asc">Collection</option>
+                </select>
+            </label>
+        </div>
+        <table>
+            <thead>
+                <tr><th>Title</th><th>Collection</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody id="library"></tbody>
+        </table>
+        <p class="pager">
+            <button type="button" class="texty" id="library-prev">Previous</button>
+            <span id="library-page" class="muted"></span>
+            <button type="button" class="texty" id="library-next">Next</button>
+        </p>
     </section>
 </main>
 <script>window.VIDEO_BASE=<?= json_encode(base_path(), JSON_UNESCAPED_SLASHES) ?>;</script>

@@ -81,7 +81,7 @@ $base = rtrim(cfg()['base_url'], '/');
 
     <section id="list">
         <h2>List jobs</h2>
-        <p><code>GET /api/jobs</code> returns the newest 200 jobs. <code>placements</code> is the collection and logical key currently pointing at that file.</p>
+        <p><code>GET /api/jobs</code> returns the newest 200 jobs. <code>limit</code> and <code>offset</code> page through them. <code>q</code> searches the title, filename, collection, and logical key. <code>collection</code> keeps videos in that collection. <code>sort</code> is <code>created</code>, <code>title</code>, <code>collection</code>, or <code>status</code>, and <code>dir</code> is <code>asc</code> or <code>desc</code>. <code>display_title</code> is the title, or the filename when the title is blank. <code>counts</code> is the whole queue, not just this page.</p>
         <?php example(
             <<<'SH'
             curl -sS -H "Authorization: Bearer $TOKEN" \

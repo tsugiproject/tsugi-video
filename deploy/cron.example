@@ -1,2 +1,2 @@
-# Every minute; worker.php obtains a nonblocking exclusive file lock.
+# Every minute. An idle run, or one that finds the worker lock held, prints nothing.
 * * * * * cd /var/www/video-server && /usr/bin/php bin/worker.php >> /var/www/video-server/var/cron.log 2>&1

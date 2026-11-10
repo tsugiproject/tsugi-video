@@ -99,7 +99,6 @@ function progress_ffmpeg(string $line): void
 // flock works on Ubuntu and macOS. The Linux flock(1) utility does not.
 $lock = fopen(pathof('lock_file'), 'c');
 if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-    echo "Worker already running\n";
     exit(0);
 }
 
@@ -113,7 +112,6 @@ try {
     $job = $db->query("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at, id LIMIT 1")->fetch();
     if (!$job) {
         $db->commit();
-        echo "Queue empty\n";
         exit(0);
     }
     $statement = $db->prepare("UPDATE jobs SET status='processing', stage='probe', progress=1, started_at=CURRENT_TIMESTAMP, finished_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?");
