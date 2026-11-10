@@ -74,11 +74,11 @@ Job stages are queued, probe, hls, audio, whisper, publish, completed/failed. Pr
 ```sh
 php bin/start-inbox.php                         # report paths.inbox; does not queue
 php bin/start-inbox.php /path/to/this/drop      # report this folder only
-php bin/start-inbox.php /path/to/this/drop --apply
-php bin/start-inbox.php --limit 1 --apply
+php bin/start-inbox.php /path/to/this/drop --enqueue
+php bin/start-inbox.php --limit 1 --enqueue
 ```
 
-A run only reports unless you pass `--apply`. It hashes each video and leaves queued, processing, completed, and failed jobs alone. With `--apply`, new files are copied into storage, placed on the collection and logical key from `media.yaml`, and keep that course's vocabulary prompt and replacement rules. Whisper receives the vocabulary as `--prompt`. After transcription, the replacement rules are applied to the caption text and timestamps are left unchanged. One worker is started when anything new is queued. A finished job starts the next worker, which stops if the lock is held or the queue is empty. Cron remains the backstop.
+A run only reports unless you pass `--enqueue`. It hashes each video and leaves queued, processing, completed, and failed jobs alone. With `--enqueue`, new files are copied into storage, placed on the collection and logical key from `media.yaml`, and keep that course's vocabulary prompt and replacement rules. Whisper receives the vocabulary as `--prompt`. After transcription, the replacement rules are applied to the caption text and timestamps are left unchanged. One worker is started when anything new is queued. A finished job starts the next worker, which stops if the lock is held or the queue is empty. Cron remains the backstop.
 
 ## Captions
 

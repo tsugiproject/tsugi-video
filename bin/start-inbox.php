@@ -19,7 +19,7 @@ function out(string $line): void
 function usage(): void
 {
     echo <<<TXT
-Usage: php bin/start-inbox.php [PATH] [--apply] [--limit N]
+Usage: php bin/start-inbox.php [PATH] [--enqueue] [--limit N]
 
 Hash the videos named by each media.yaml in the inbox and queue any SHA-256
 that is not already queued, processing, or completed.
@@ -29,11 +29,11 @@ the videos that file names (paths are relative to the media.yaml folder,
 including subfolders), a whisper vocabulary file, and a whisper replacements
 file. A media.yaml one folder down is a separate course.
 
-A run only reports what it would queue. Pass --apply to copy videos and
+A run only reports what it would queue. Pass --enqueue to copy videos and
 change the queue.
 
   PATH           Drop folder for this run. Omit it to use paths.inbox in config.php
-  --apply        Copy new videos into storage and queue them
+  --enqueue      Copy new videos into storage and queue them
   --dry-run      Report only. This is already the default
   --limit N      Queue at most N new videos (0 means no limit)
 
@@ -70,7 +70,7 @@ function parse_inbox_args(array $argv): array
             $sawDry = true;
             continue;
         }
-        if ($arg === '--apply') {
+        if ($arg === '--enqueue') {
             $sawApply = true;
             continue;
         }
@@ -118,7 +118,7 @@ function parse_inbox_args(array $argv): array
         throw new InvalidArgumentException('Pass the drop folder once');
     }
     if ($sawDry && $sawApply) {
-        throw new InvalidArgumentException('Pass either --apply or --dry-run');
+        throw new InvalidArgumentException('Pass either --enqueue or --dry-run');
     }
     return [
         'path' => $path ?? $flagPath ?? '',
@@ -579,7 +579,7 @@ try {
         out('Stopped after --limit ' . $limit . '.');
     }
     if ($dry && $totals['queued'] > 0) {
-        out('Dry-run only. Re-run with --apply to queue.');
+        out('Dry-run only. Re-run with --enqueue to queue.');
     }
 } catch (Throwable $error) {
     fwrite(STDERR, 'ERROR: ' . $error->getMessage() . "\n");
