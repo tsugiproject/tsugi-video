@@ -1,8 +1,8 @@
 <?php
-require dirname(__DIR__).'/src/bootstrap.php';
+require_once dirname(__DIR__).'/src/bootstrap.php';
 admin_auth();
 $method=$_SERVER['REQUEST_METHOD'];
-$path=preg_replace('~^/api~','',parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH));
+$path=preg_replace('~^/api~','',request_path());
 try {
  if ($method==='GET' && $path==='/jobs') {
     $rows=db()->query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 200')->fetchAll();

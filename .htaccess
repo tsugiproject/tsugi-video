@@ -1,0 +1,14 @@
+Options -Indexes
+# MAMP maps this folder to /tsugi-video/ and runs PHP with mod_fastcgi.
+CGIPassAuth On
+SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} ^(.+)$
+RewriteRule ^ - [E=HTTP_AUTHORIZATION:%1]
+
+# Keep config, source, queue, and tooling off the web.
+RewriteRule ^(?:\.|config(?:\.example)?\.php$|src(?:/|$)|bin(?:/|$)|var(?:/|$)|sql(?:/|$)|docs(?:/|$)|deploy(?:/|$)|models(?:/|$)) - [F,L]
+
+RewriteRule ^$ public/index.php [L]
+RewriteCond %{REQUEST_URI} !/public/
+RewriteRule ^(.*)$ public/$1 [L]

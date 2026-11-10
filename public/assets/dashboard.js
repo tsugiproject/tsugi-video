@@ -1,6 +1,8 @@
+const base=(window.VIDEO_BASE||'').replace(/\/$/,'');
+function api(path){return base+path;}
 async function refresh(){
  try{
-  const r=await fetch('/api/jobs',{cache:'no-store'}); if(!r.ok)return;
+  const r=await fetch(api('/api/jobs'),{cache:'no-store'}); if(!r.ok)return;
   const {jobs}=await r.json();
   const counts={queued:0,processing:0,completed:0,failed:0};
   for(const j of jobs)counts[j.status]=(counts[j.status]||0)+1;
@@ -13,13 +15,13 @@ async function refresh(){
    const c=document.createElement('td');c.textContent=j.progress.toFixed(1)+'%';const bar=document.createElement('div');bar.className='progress';const fill=document.createElement('span');fill.style.width=j.progress+'%';bar.append(fill);c.append(bar);
    const d=document.createElement('td');
    if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.textContent='Embed';d.append(embed);}
-   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch('/api/jobs/'+j.id+'/retry',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry)}
+   if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry)}
    tr.append(a,b,c,d);tbody.append(tr);
   }
  }catch(e){console.warn('Could not refresh status',e)}
 }
 const form=document.getElementById('upload');form.addEventListener('submit',async e=>{
  e.preventDefault();const output=document.getElementById('upload-status');output.textContent='Uploading…';
- try{const r=await fetch('/api/uploads',{method:'POST',body:new FormData(form)});const data=await r.json();if(!r.ok)throw new Error(data.error||'Upload failed');output.textContent='Queued '+data.id;form.reset();refresh();}catch(err){output.textContent=err.message;}
+ try{const r=await fetch(api('/api/uploads'),{method:'POST',body:new FormData(form)});const data=await r.json();if(!r.ok)throw new Error(data.error||'Upload failed');output.textContent='Queued '+data.id;form.reset();refresh();}catch(err){output.textContent=err.message;}
 });
 setInterval(refresh,5000);refresh();

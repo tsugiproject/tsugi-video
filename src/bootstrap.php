@@ -10,6 +10,22 @@ function cfg(): array {
     return $config;
 }
 function pathof(string $key): string { return (string)(cfg()['paths'][$key] ?? ''); }
+function base_path(): string {
+    $path=parse_url((string)cfg()['base_url'], PHP_URL_PATH);
+    return rtrim(is_string($path) ? $path : '', '/');
+}
+function url_path(string $path): string {
+    return base_path().'/'.ltrim($path, '/');
+}
+function request_path(): string {
+    $path=parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $base=base_path();
+    if ($base !== '' && ($path === $base || str_starts_with($path, $base.'/'))) {
+        $path=substr($path, strlen($base)) ?: '/';
+    }
+    if (str_starts_with($path, '/public/')) $path=substr($path, 7) ?: '/';
+    return $path;
+}
 function require_media_mount(): void {
     $required=cfg()['paths']['required_mount'] ?? null;
     if ($required === null || $required === '') return;
@@ -39,14 +55,30 @@ function json_out($data, int $status=200): never {
     header('Cache-Control: no-store'); echo json_encode($data, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE); exit;
 }
 function fail(string $error, int $code=400): never { json_out(['error'=>$error],$code); }
+function authorization_header(): string {
+    foreach ($_SERVER as $key => $value) {
+        if (!is_string($value) || $value === '') continue;
+        if ($key === 'Authorization' || preg_match('/^(?:REDIRECT_)*HTTP_AUTHORIZATION$/', $key)) return $value;
+    }
+    return '';
+}
 function admin_auth(): void {
     $conf=cfg();
-    $bearer=''; $h=$_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (preg_match('/^Bearer\s+(.+)$/i',$h,$m)) $bearer=$m[1];
+    $header=authorization_header();
+    $bearer='';
+    if (preg_match('/^Bearer\s+(\S+)$/i',$header,$m)) $bearer=$m[1];
+    $user=$_SERVER['PHP_AUTH_USER'] ?? null;
+    $password=$_SERVER['PHP_AUTH_PW'] ?? null;
+    if (($user === null || $password === null) && preg_match('/^Basic\s+(\S+)$/i',$header,$m)) {
+        $decoded=base64_decode($m[1], true);
+        if ($decoded !== false && str_contains($decoded, ':')) {
+            [$user, $password]=explode(':', $decoded, 2);
+        }
+    }
     $bearerOk = $bearer !== '' && hash_equals((string)$conf['api_token'], $bearer);
-    $basicOk = isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])
-        && hash_equals((string)$conf['admin_user'], (string)$_SERVER['PHP_AUTH_USER'])
-        && hash_equals((string)$conf['admin_password'], (string)$_SERVER['PHP_AUTH_PW']);
+    $basicOk = $user !== null && $password !== null
+        && hash_equals((string)$conf['admin_user'], (string)$user)
+        && hash_equals((string)$conf['admin_password'], (string)$password);
     if (!$bearerOk && !$basicOk) {
         header('WWW-Authenticate: Basic realm="Video Server Admin"');
         fail('Authentication required',401);
