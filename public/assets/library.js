@@ -1,5 +1,16 @@
 const base=(window.VIDEO_BASE||'').replace(/\/$/,'');
 function api(path){return base+path;}
+function elapsed(start,end){
+ if(!start) return '';
+ const a=new Date(String(start).replace(' ','T')+'Z').getTime();
+ const b=end?new Date(String(end).replace(' ','T')+'Z').getTime():Date.now();
+ if(Number.isNaN(a)||Number.isNaN(b)) return '';
+ let seconds=Math.max(0,Math.round((b-a)/1000));
+ const hours=Math.floor(seconds/3600);seconds%=3600;
+ const minutes=Math.floor(seconds/60);seconds%=60;
+ const pad=n=>String(n).padStart(2,'0');
+ return hours?hours+':'+pad(minutes)+':'+pad(seconds):minutes+':'+pad(seconds);
+}
 function when(value){
  if(!value) return '—';
  const d=new Date(String(value).replace(' ','T')+'Z');
@@ -67,7 +78,7 @@ async function loadLibrary(){
   for(const j of jobs){
    const tr=document.createElement('tr');
    const title=document.createElement('td');
-   title.textContent=j.display_title||j.title;
+   const titleLink=document.createElement('a');titleLink.href=api('/job.php')+'?id='+encodeURIComponent(j.id);titleLink.textContent=j.display_title||j.title;title.append(titleLink);
    if((j.display_title||j.title)!==j.original_name){const small=document.createElement('small');small.textContent=j.original_name;title.append(small);}
    const sha=document.createElement('small');sha.className='sha';sha.textContent=j.id;title.append(sha);
    const where=document.createElement('td');
@@ -77,7 +88,11 @@ async function loadLibrary(){
    const completed=document.createElement('td');
    completed.className='nowrap';
    completed.textContent=j.status==='completed'?when(j.finished_at):'—';
+   const took=elapsed(j.started_at,j.finished_at);
+   if(took){const line=document.createElement('small');line.textContent='Encode '+took;completed.append(line);}
    const actions=document.createElement('td');
+   const details=document.createElement('a');details.href=api('/job.php')+'?id='+encodeURIComponent(j.id);details.textContent='Details';
+   actions.append(details,' · ');
    if(j.status==='completed'){
     const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';
     const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';

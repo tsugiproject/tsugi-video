@@ -7,6 +7,17 @@ function when(value){
  const p=n=>String(n).padStart(2,'0');
  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
 }
+function elapsed(start,end){
+ if(!start) return '—';
+ const a=new Date(String(start).replace(' ','T')+'Z').getTime();
+ const b=end?new Date(String(end).replace(' ','T')+'Z').getTime():Date.now();
+ if(Number.isNaN(a)||Number.isNaN(b)) return '—';
+ let seconds=Math.max(0,Math.round((b-a)/1000));
+ const hours=Math.floor(seconds/3600);seconds%=3600;
+ const minutes=Math.floor(seconds/60);seconds%=60;
+ const pad=n=>String(n).padStart(2,'0');
+ return hours?hours+':'+pad(minutes)+':'+pad(seconds):minutes+':'+pad(seconds);
+}
 function datesCell(j){
  const td=document.createElement('td');td.className='dates';
  for(const [label,value] of [['Uploaded',j.created_at],['Started',j.started_at],['Ended',j.finished_at]]){
@@ -14,6 +25,9 @@ function datesCell(j){
   line.append(label+' ', document.createTextNode(when(value)));
   td.append(line);
  }
+ const encode=document.createElement('small');
+ encode.append('Encode ', document.createTextNode(elapsed(j.started_at,j.finished_at)));
+ td.append(encode);
  return td;
 }
 document.querySelectorAll('time[data-utc]').forEach(el=>{el.textContent=when(el.dataset.utc);});
@@ -134,14 +148,14 @@ async function refresh(){
   const tbody=document.getElementById('jobs');tbody.replaceChildren();
   for(const j of jobs){
    const tr=document.createElement('tr');
-   const a=document.createElement('td');a.textContent=j.display_title||j.title;const small=document.createElement('small');small.textContent=j.original_name;a.append(small);const sha=document.createElement('small');sha.className='sha';sha.textContent=j.id;a.append(sha);slotLines(a,j);
+   const a=document.createElement('td');const titleLink=document.createElement('a');titleLink.href=api('/job.php')+'?id='+encodeURIComponent(j.id);titleLink.textContent=j.display_title||j.title;a.append(titleLink);const small=document.createElement('small');small.textContent=j.original_name;a.append(small);const sha=document.createElement('small');sha.className='sha';sha.textContent=j.id;a.append(sha);slotLines(a,j);
    const b=document.createElement('td');if(j.status==='failed')b.className='status-failed';b.textContent=j.status+' / '+j.stage;if(j.log_line){const line=document.createElement('small');line.className='log-line';line.textContent=j.log_line;b.append(line);}
    const c=document.createElement('td');c.textContent=j.progress.toFixed(1)+'%';const bar=document.createElement('div');bar.className='progress';const fill=document.createElement('span');fill.style.width=j.progress+'%';bar.append(fill);c.append(bar);
    const whenCell=datesCell(j);
    const d=document.createElement('td');
    if(j.status==='completed'){const watch=document.createElement('a');watch.href=j.watch_url;watch.target='_blank';watch.rel='noopener';watch.textContent='Watch';d.append(watch,' · ');const embed=document.createElement('a');embed.href=j.embed_url;embed.target='_blank';embed.rel='noopener';embed.textContent='Embed';const pair=document.createElement('span');pair.className='nowrap';pair.append(embed,copyEmbedButton(j.embed_url));d.append(pair,' · ');const caps=document.createElement('a');caps.href=api('/captions.php')+'?id='+encodeURIComponent(j.id);caps.textContent='Captions';d.append(caps,' · ');}
    if(j.status==='failed'){const msg=document.createElement('small');msg.textContent=j.error||'Unknown error';d.append(msg);const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=async()=>{await fetch(api('/api/jobs/'+j.id+'/retry'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});refresh()};d.append(retry,' ');}
-   const log=document.createElement('a');log.href=api('/api/jobs/'+j.id+'/log');log.target='_blank';log.rel='noopener';log.textContent='Log';d.append(log);
+   const details=document.createElement('a');details.href=api('/job.php')+'?id='+encodeURIComponent(j.id);details.textContent='Details';d.append(details,' · ');const log=document.createElement('a');log.href=api('/api/jobs/'+j.id+'/log');log.target='_blank';log.rel='noopener';log.textContent='Log';d.append(log);
    if(j.status!=='processing'){d.append(' · ');const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;d.append(del);}
    tr.append(a,b,c,whenCell,d);tbody.append(tr);
   }

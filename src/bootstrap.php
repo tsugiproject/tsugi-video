@@ -477,6 +477,40 @@ function display_title(array $job): string
     return $title !== '' ? $title : (string) $job['original_name'];
 }
 
+// Seconds from when the worker claimed the job until it finished. A running job
+// counts through now. Null until the job has started.
+function encode_seconds(array $job): ?int
+{
+    $start = trim((string) ($job['started_at'] ?? ''));
+    if ($start === '') {
+        return null;
+    }
+    $startAt = strtotime($start . ' UTC');
+    if ($startAt === false) {
+        return null;
+    }
+    $end = trim((string) ($job['finished_at'] ?? ''));
+    $endAt = $end === '' ? time() : strtotime($end . ' UTC');
+    if ($endAt === false) {
+        return null;
+    }
+    return max(0, $endAt - $startAt);
+}
+
+function format_elapsed(?int $seconds): string
+{
+    if ($seconds === null) {
+        return '—';
+    }
+    $hours = intdiv($seconds, 3600);
+    $minutes = intdiv($seconds % 3600, 60);
+    $rest = $seconds % 60;
+    if ($hours > 0) {
+        return sprintf('%d:%02d:%02d', $hours, $minutes, $rest);
+    }
+    return sprintf('%d:%02d', $minutes, $rest);
+}
+
 // Newest-first queue, or a searchable library page. Sort and direction are a fixed list.
 function list_jobs(array $options): array
 {

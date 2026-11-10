@@ -36,11 +36,12 @@ function paint(tracks) {
     code.textContent = track.language;
     language.append(code);
     const file = document.createElement('td');
+    file.className = 'nowrap';
+    file.append(track.file + ' ');
     const link = document.createElement('a');
     link.href = api('/media/' + window.CAPTION_JOB.slice(0, 2) + '/' + window.CAPTION_JOB.slice(2, 4) + '/' + window.CAPTION_JOB + '/' + track.file);
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = track.file;
+    link.download = track.file;
+    link.textContent = 'Download';
     file.append(link);
     const action = document.createElement('td');
     const button = document.createElement('button');

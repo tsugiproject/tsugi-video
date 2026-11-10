@@ -75,6 +75,13 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
             <p>Embed this video:</p>
             <textarea id="embed-code" readonly rows="3">&lt;iframe src="<?= e(rtrim(cfg()['base_url'], '/') . $sharePath) ?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea>
             <p class="muted">HLS playback requires Safari or bundled hls.js for other browsers.</p>
+            <?php if ($tracks !== []): ?>
+                <p>Captions:
+                    <?php foreach ($tracks as $track): ?>
+                        <a href="<?= e(url_path(media_public_path($id) . '/' . $track['file'])) ?>" download="<?= e($track['file']) ?>"><?= e($track['label']) ?></a>
+                    <?php endforeach; ?>
+                </p>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
     <div id="play-error" class="muted"></div>

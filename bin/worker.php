@@ -152,6 +152,7 @@ try {
 
 $id = $job['id'];
 $log = '';
+$runStarted = time();
 
 try {
     $work = content_dir('work', $id);
@@ -345,10 +346,10 @@ try {
 
     $statement = db()->prepare("UPDATE jobs SET status='completed', stage='completed', progress=100, finished_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?");
     $statement->execute([$id]);
-    logmsg('Completed');
+    logmsg('Completed in ' . format_elapsed(time() - $runStarted));
     echo "Completed $id\n";
 } catch (Throwable $error) {
-    logmsg('ERROR: ' . $error->getMessage());
+    logmsg('ERROR: ' . $error->getMessage() . ' after ' . format_elapsed(time() - $runStarted));
     update_job($id, 'failed', 'failed', (float) (job_by_id($id)['progress'] ?? 0), $error->getMessage());
     db()->prepare('UPDATE jobs SET finished_at=CURRENT_TIMESTAMP WHERE id=?')->execute([$id]);
     exit(1);

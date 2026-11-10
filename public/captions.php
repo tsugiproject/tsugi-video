@@ -53,7 +53,7 @@ $names = caption_language_names();
                     <?php foreach ($tracks as $track): ?>
                         <tr>
                             <td><?= e($track['label']) ?> <small><?= e($track['language']) ?></small></td>
-                            <td><a href="<?= e(url_path(media_public_path($id) . '/' . $track['file'])) ?>" target="_blank" rel="noopener"><?= e($track['file']) ?></a></td>
+                            <td class="nowrap"><?= e($track['file']) ?> <a href="<?= e(url_path(media_public_path($id) . '/' . $track['file'])) ?>" download="<?= e($track['file']) ?>">Download</a></td>
                             <td><button type="button" data-remove="<?= e($track['language']) ?>" data-label="<?= e($track['label']) ?>">Remove</button></td>
                         </tr>
                     <?php endforeach; ?>

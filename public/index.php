@@ -82,13 +82,14 @@ $incoming = list_import_files();
             <tbody id="jobs">
                 <?php foreach ($jobs as $job): ?>
                     <tr>
-                        <td><?= e(display_title($job)) ?><small><?= e($job['original_name']) ?></small><small class="sha"><?= e($job['id']) ?></small><?php foreach (job_placements($job['id']) as $slot): ?><small class="nowrap"><a href="<?= e(url_path('/watch/' . rawurlencode($slot['collection']) . '/' . rawurlencode($slot['logical_key']))) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a><button type="button" class="copy" data-copy="<?= e($slot['embed_url']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></small><?php endforeach; ?></td>
+                        <td><a href="<?= e(url_path('/job.php') . '?id=' . $job['id']) ?>"><?= e(display_title($job)) ?></a><small><?= e($job['original_name']) ?></small><small class="sha"><?= e($job['id']) ?></small><?php foreach (job_placements($job['id']) as $slot): ?><small class="nowrap"><a href="<?= e(url_path('/watch/' . rawurlencode($slot['collection']) . '/' . rawurlencode($slot['logical_key']))) ?>" target="_blank" rel="noopener"><?= e($slot['collection'] . ' / ' . $slot['logical_key']) ?></a><button type="button" class="copy" data-copy="<?= e($slot['embed_url']) ?>" title="Copy embed link" aria-label="Copy embed link"><svg class="icon-copy" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1.5A1.5 1.5 0 0 1 5.5 0h6A1.5 1.5 0 0 1 13 1.5v8A1.5 1.5 0 0 1 11.5 11h-6A1.5 1.5 0 0 1 4 9.5v-8zM5.5 1a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-6z"/><path fill="currentColor" d="M2 4.5A1.5 1.5 0 0 1 3.5 3H4v1h-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9.5 14h-6A1.5 1.5 0 0 1 2 12.5v-8z"/></svg><svg class="icon-check" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.2 11.5 13 4.5"/></svg></button></small><?php endforeach; ?></td>
                         <td<?= $job['status'] === 'failed' ? ' class="status-failed"' : '' ?>><?= e($job['status'] . ' / ' . $job['stage']) ?><?php $line = job_log_tail($job['id']); if ($line): ?><small class="log-line"><?= e($line) ?></small><?php endif; ?></td>
                         <td><?= round((float) $job['progress']) ?>%</td>
                         <td class="dates">
                             <small>Uploaded <time data-utc="<?= e((string) $job['created_at']) ?>"><?= e((string) $job['created_at']) ?></time></small>
                             <small>Started <time data-utc="<?= e((string) ($job['started_at'] ?? '')) ?>"><?= e($job['started_at'] ?: '—') ?></time></small>
                             <small>Ended <time data-utc="<?= e((string) ($job['finished_at'] ?? '')) ?>"><?= e($job['finished_at'] ?: '—') ?></time></small>
+                            <small>Encode <?= e(format_elapsed(encode_seconds($job))) ?></small>
                         </td>
                         <td>
                             <?php if ($job['status'] === 'completed'): ?>
@@ -99,6 +100,8 @@ $incoming = list_import_files();
                                 <a href="<?= e(url_path('/captions.php') . '?id=' . $job['id']) ?>">Captions</a>
                                 ·
                             <?php endif; ?>
+                            <a href="<?= e(url_path('/job.php') . '?id=' . $job['id']) ?>">Details</a>
+                            ·
                             <a href="<?= e(url_path('/api/jobs/' . $job['id'] . '/log')) ?>" target="_blank" rel="noopener">Log</a>
                             <?php if ($job['status'] !== 'processing'): ?>
                                 ·
