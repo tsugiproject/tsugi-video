@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>org.example.video-server.worker</string>
+<key>ProgramArguments</key><array><string>/opt/homebrew/bin/php</string><string>/Users/YOURNAME/video-server/bin/worker.php</string></array>
+<key>StartInterval</key><integer>60</integer>
+<key>RunAtLoad</key><true/>
+<key>StandardOutPath</key><string>/Users/YOURNAME/video-server/var/worker.out.log</string>
+<key>StandardErrorPath</key><string>/Users/YOURNAME/video-server/var/worker.err.log</string>
+</dict></plist>

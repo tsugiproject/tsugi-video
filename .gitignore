@@ -1,0 +1,5 @@
+/config.php
+/var/
+/models/
+/public/assets/hls.min.js
+.DS_Store

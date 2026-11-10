@@ -1,0 +1,6 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^$ index.php [L]
+RewriteRule ^api(?:/.*)?$ api.php [L,QSA]
+RewriteRule ^watch/([a-f0-9]{24})$ player.php?id=$1 [L,QSA]
+RewriteRule ^embed/([a-f0-9]{24})$ player.php?id=$1&embed=1 [L,QSA]

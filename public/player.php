@@ -1,0 +1,9 @@
+<?php
+require dirname(__DIR__).'/src/bootstrap.php';
+$id=$_GET['id']??'';if (!preg_match('/^[a-f0-9]{24}$/',$id)) { http_response_code(404); exit('Not found'); }
+$j=job_by_id($id);if (!$j || $j['status']!=='completed') {http_response_code(404);exit('Video not ready');}
+$embed=($_GET['embed']??'')==='1';
+$hls='/media/'.$id.'/index.m3u8';$captions=is_file(rtrim(pathof('storage'),'/').'/media/'.$id.'/captions.vtt');
+header('Referrer-Policy: no-referrer');
+header('Content-Security-Policy: default-src \'self\'; script-src \'self\'; style-src \'self\'; media-src \'self\' blob:; connect-src \'self\'; img-src \'self\' data:; frame-ancestors *;');
+?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?=e($j['title'])?></title><link rel="stylesheet" href="/assets/style.css"></head><body class="player-page"><div class="player-wrap"><video id="video" controls playsinline preload="metadata" data-hls="<?=e($hls)?>" crossorigin="anonymous"><?php if ($captions): ?><track kind="captions" src="/media/<?=e($id)?>/captions.vtt" srclang="en" label="English" default><?php endif; ?></video><?php if (!$embed): ?><div class="player-info"><h1><?=e($j['title'])?></h1><p>Embed this video:</p><textarea readonly rows="3" onclick="this.select()">&lt;iframe src="<?=e(rtrim(cfg()['base_url'],'/').'/embed/'.$id)?>" width="800" height="450" allow="fullscreen" allowfullscreen&gt;&lt;/iframe&gt;</textarea><p class="muted">HLS playback requires Safari or bundled hls.js for other browsers.</p></div><?php endif; ?><div id="play-error" class="muted"></div></div><script src="/assets/hls.min.js"></script><script src="/assets/player.js"></script></body></html>

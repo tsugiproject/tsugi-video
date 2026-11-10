@@ -1,0 +1,27 @@
+# Adjust paths and hostname before enabling this vhost.
+<VirtualHost *:80>
+    ServerName video.tsugi.org
+    DocumentRoot /var/www/video-server/public
+    <Directory /var/www/video-server/public>
+        Require all granted
+        AllowOverride All
+        Options -Indexes -MultiViews +FollowSymLinks
+    </Directory>
+    Alias /media/ /efs/video-server/media/
+    <Directory /efs/video-server/media>
+        Require all granted
+        Options -Indexes -FollowSymLinks
+        AllowOverride None
+    </Directory>
+    AddType application/vnd.apple.mpegurl .m3u8
+    AddType video/mp2t .ts
+    AddType text/vtt .vtt
+    # Prevent indexing and prohibit access to hidden directory names such as .staging.
+    <LocationMatch "^/media/\." >
+        Require all denied
+    </LocationMatch>
+    ErrorLog ${APACHE_LOG_DIR}/video-server-error.log
+    CustomLog ${APACHE_LOG_DIR}/video-server-access.log combined
+</VirtualHost>
+# Configure HTTPS with certbot after DNS points to this host.
+# Use CSP frame-ancestors appropriately for public iframe embedding.
