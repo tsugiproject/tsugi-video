@@ -23,6 +23,12 @@ if ($uri === '/api' || str_starts_with($uri, '/api/')) {
     return true;
 }
 
+if (preg_match('~^/watch/([a-f0-9]{64})/view$~', $uri, $matches)) {
+    $_GET['id'] = $matches[1];
+    require __DIR__ . '/view.php';
+    return true;
+}
+
 if (preg_match('~^/(watch|embed)/([a-f0-9]{64})$~', $uri, $matches)) {
     $_GET['id'] = $matches[2];
     $_GET['embed'] = $matches[1] === 'embed' ? '1' : '0';

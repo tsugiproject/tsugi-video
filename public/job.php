@@ -82,6 +82,7 @@ if ($seconds !== null && $seconds > 0) {
             <tr><th>Stage</th><td><?= e((string) $job['stage']) ?></td></tr>
             <tr><th>Progress</th><td><?= round((float) $job['progress']) ?>%<div class="progress"><span style="width:<?= e((string) max(0, min(100, (float) $job['progress']))) ?>%"></span></div></td></tr>
             <tr><th>Duration</th><td><?= e($clock) ?></td></tr>
+            <tr><th>Views</th><td><?= e(number_format((int) ($job['views'] ?? 0))) ?></td></tr>
             <?php if ((string) ($job['error'] ?? '') !== ''): ?>
                 <tr><th>Error</th><td class="status-failed"><?= e((string) $job['error']) ?></td></tr>
             <?php endif; ?>

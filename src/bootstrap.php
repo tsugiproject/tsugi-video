@@ -222,6 +222,9 @@ function ensure_job_columns(PDO $pdo): void
     if (!isset($names['tags'])) {
         $pdo->exec('ALTER TABLE jobs ADD COLUMN tags TEXT');
     }
+    if (!isset($names['views'])) {
+        $pdo->exec('ALTER TABLE jobs ADD COLUMN views INTEGER NOT NULL DEFAULT 0');
+    }
 }
 
 function e(string $s): string
@@ -550,6 +553,17 @@ function job_by_id(string $id): ?array
     return $statement->fetch() ?: null;
 }
 
+// One play of a finished video. Pausing and resuming on the same page does not count again.
+function record_view(string $id): bool
+{
+    if (!is_content_id($id)) {
+        return false;
+    }
+    $statement = db()->prepare("UPDATE jobs SET views = views + 1 WHERE id = ? AND status = 'completed'");
+    $statement->execute([$id]);
+    return $statement->rowCount() === 1;
+}
+
 // Fields safe to return from the API. source_path stays private.
 function public_job(array $job): array
 {
@@ -570,6 +584,7 @@ function public_job(array $job): array
         'created_at' => $job['created_at'],
         'started_at' => $job['started_at'],
         'finished_at' => $job['finished_at'],
+        'views' => (int) ($job['views'] ?? 0),
         'embed_url' => $url . '/embed/' . $job['id'],
         'watch_url' => $url . '/watch/' . $job['id'],
         'hls_url' => $job['status'] === 'completed' ? $url . media_public_path($job['id']) . '/index.m3u8' : null,
@@ -760,6 +775,7 @@ function list_jobs(array $options): array
         'status' => 'j.status',
         'collection' => "(SELECT MIN(collection) FROM placements WHERE job_id = j.id) COLLATE NOCASE",
         'created' => 'j.created_at',
+        'views' => 'j.views',
     ][$sort] ?? 'j.created_at';
 
     $where = [];
@@ -862,7 +878,7 @@ function collection_playlist(string $name): ?array
     if (!is_string($collection)) {
         return null;
     }
-    $statement = db()->prepare('SELECT p.logical_key, j.id, j.title, j.description, j.tags, j.original_name, j.status, j.stage, j.progress, j.duration, j.captions, j.error, j.created_at, j.started_at, j.finished_at, j.updated_at FROM placements p JOIN jobs j ON j.id = p.job_id WHERE p.collection = ? AND j.status = ? ORDER BY p.logical_key COLLATE NOCASE');
+    $statement = db()->prepare('SELECT p.logical_key, j.id, j.title, j.description, j.tags, j.original_name, j.status, j.stage, j.progress, j.duration, j.captions, j.error, j.created_at, j.started_at, j.finished_at, j.updated_at, j.views FROM placements p JOIN jobs j ON j.id = p.job_id WHERE p.collection = ? AND j.status = ? ORDER BY p.logical_key COLLATE NOCASE');
     $statement->execute([$collection, 'completed']);
     $url = public_base_url();
     $videos = [];
@@ -890,6 +906,7 @@ function collection_playlist(string $name): ?array
             'started_at' => $row['started_at'],
             'finished_at' => $row['finished_at'],
             'updated_at' => $row['updated_at'],
+            'views' => (int) ($row['views'] ?? 0),
         ];
     }
     return ['collection' => $collection, 'videos' => $videos];

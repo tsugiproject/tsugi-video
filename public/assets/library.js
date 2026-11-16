@@ -72,7 +72,7 @@ async function loadLibrary(){
   if(!jobs.length){
    const tr=document.createElement('tr');
    const td=document.createElement('td');
-   td.colSpan=5;td.className='muted';td.textContent='No videos';
+   td.colSpan=6;td.className='muted';td.textContent='No videos';
    tr.append(td);tbody.append(tr);
   }
   for(const j of jobs){
@@ -85,6 +85,7 @@ async function loadLibrary(){
    if(!(j.placements||[]).length) where.textContent='—';
    else slotLines(where,j);
    const status=document.createElement('td');status.textContent=j.status;if(j.status==='failed')status.className='status-failed';
+   const views=document.createElement('td');views.className='nowrap';views.textContent=Number(j.views||0).toLocaleString();
    const completed=document.createElement('td');
    completed.className='nowrap';
    completed.textContent=j.status==='completed'?when(j.finished_at):'—';
@@ -103,7 +104,7 @@ async function loadLibrary(){
    const del=document.createElement('button');del.textContent='Delete';del.dataset.delete=j.id;del.dataset.title=j.display_title||j.title;
    if(j.status==='processing') del.disabled=true;
    actions.append(del);
-   tr.append(title,where,status,completed,actions);tbody.append(tr);
+   tr.append(title,where,status,views,completed,actions);tbody.append(tr);
   }
   const start=total?libraryPage*libraryPageSize+1:0;
   document.getElementById('library-page').textContent=total?start+'–'+Math.min(total,start+jobs.length-1)+' of '+total:'0 videos';

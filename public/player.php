@@ -63,7 +63,7 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self'; worker-s
 <body class="player-page<?= $embed ? ' embed-page' : '' ?>">
 <div class="player-wrap">
     <div class="video-stage">
-    <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" crossorigin="anonymous">
+    <video id="video" controls playsinline preload="metadata" data-hls="<?= e($hls) ?>" data-view="<?= e(url_path('/watch/' . $id . '/view')) ?>" crossorigin="anonymous">
         <?php foreach ($tracks as $track): ?>
             <track kind="captions" src="<?= e(url_path(media_public_path($id) . '/' . $track['file'])) ?>" srclang="<?= e($track['language']) ?>" label="<?= e($track['label']) ?>"<?= $track['language'] === $defaultLanguage ? ' default' : '' ?>>
         <?php endforeach; ?>

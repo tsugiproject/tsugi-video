@@ -7,6 +7,7 @@ RewriteCond %{HTTP:Authorization} ^(.+)$
 RewriteRule ^ - [E=HTTP_AUTHORIZATION:%1]
 RewriteRule ^$ index.php [L]
 RewriteRule ^api(?:/.*)?$ api.php [L,QSA]
+RewriteRule ^watch/([a-f0-9]{64})/view$ view.php?id=$1 [L,QSA]
 RewriteRule ^watch/([a-f0-9]{64})$ player.php?id=$1 [L,QSA]
 RewriteRule ^embed/([a-f0-9]{64})$ player.php?id=$1&embed=1 [L,QSA]
 RewriteRule ^watch/([A-Za-z0-9][A-Za-z0-9._-]*)\.json$ playlist.php?collection=$1&format=json [L,QSA]

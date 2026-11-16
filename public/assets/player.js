@@ -4,6 +4,14 @@
 
   const v = document.getElementById('video');
   if (!v) return;
+  if (v.dataset.view) {
+    let counted = false;
+    v.addEventListener('play', () => {
+      if (counted) return;
+      counted = true;
+      fetch(v.dataset.view, {cache: 'no-store'}).catch(() => {});
+    });
+  }
   const url = v.dataset.hls;
 
   if (v.canPlayType('application/vnd.apple.mpegurl')) {

@@ -37,12 +37,14 @@ admin_auth();
                     <option value="created:desc">Newest</option>
                     <option value="created:asc">Oldest</option>
                     <option value="collection:asc">Collection</option>
+                    <option value="views:desc">Views, most</option>
+                    <option value="views:asc">Views, fewest</option>
                 </select>
             </label>
         </div>
         <table>
             <thead>
-                <tr><th>Title</th><th>Collection</th><th>Status</th><th>Completed</th><th></th></tr>
+                <tr><th>Title</th><th>Collection</th><th>Status</th><th>Views</th><th>Completed</th><th></th></tr>
             </thead>
             <tbody id="library"></tbody>
         </table>
