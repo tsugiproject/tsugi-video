@@ -354,6 +354,12 @@ function redirect_to_url(): ?string
     return $value;
 }
 
+// The one write the public host accepts. Crawlers follow GET links, so a play is counted with POST.
+function public_request_is_view(): bool
+{
+    return preg_match('~^/watch/[a-f0-9]{64}/view$~', request_path()) === 1;
+}
+
 function public_request_is_playback(): bool
 {
     $path = request_path();
@@ -441,6 +447,9 @@ function enforce_public_host_limits(): void
         return;
     }
     $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (public_request_is_view() && $method === 'POST') {
+        return;
+    }
     if (public_request_is_playback() && in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
         return;
     }

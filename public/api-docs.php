@@ -83,7 +83,7 @@ $play = public_base_url();
 
     <section id="list">
         <h2>List jobs</h2>
-        <p><code>GET /api/jobs</code> returns the newest 200 jobs. <code>limit</code> and <code>offset</code> page through them. <code>q</code> searches the title, filename, collection, logical key, and any part of the SHA-256. <code>collection</code> keeps videos in that collection. <code>sort</code> is <code>created</code>, <code>title</code>, <code>collection</code>, <code>status</code>, or <code>views</code>, and <code>dir</code> is <code>asc</code> or <code>desc</code>. <code>views</code> counts plays. <code>display_title</code> is the title, or the filename when the title is blank. <code>counts</code> is the whole queue, not just this page.</p>
+        <p><code>GET /api/jobs</code> returns the newest 200 jobs. <code>limit</code> and <code>offset</code> page through them. <code>q</code> searches the title, filename, collection, logical key, and any part of the SHA-256. <code>collection</code> keeps videos in that collection. <code>sort</code> is <code>created</code>, <code>title</code>, <code>collection</code>, <code>status</code>, or <code>views</code>, and <code>dir</code> is <code>asc</code> or <code>desc</code>. <code>views</code> counts plays. The player records one with <code>POST /watch/{id}/view</code>, the only POST the public host accepts. <code>display_title</code> is the title, or the filename when the title is blank. <code>counts</code> is the whole queue, not just this page.</p>
         <?php example(
             <<<'SH'
             curl -sS -H "Authorization: Bearer $TOKEN" \

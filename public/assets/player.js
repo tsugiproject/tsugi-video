@@ -9,7 +9,7 @@
     v.addEventListener('play', () => {
       if (counted) return;
       counted = true;
-      fetch(v.dataset.view, {cache: 'no-store'}).catch(() => {});
+      fetch(v.dataset.view, {method: 'POST', cache: 'no-store'}).catch(() => {});
     });
   }
   const url = v.dataset.hls;
